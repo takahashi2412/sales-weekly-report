@@ -1,0 +1,84 @@
+.training-tracker {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.selection-panel {
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+.member-list > div:hover {
+  background: rgba(232, 0, 46, 0.05) !important;
+}
+
+.steps-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  margin-top: 2rem;
+}
+
+.step-group {
+  margin-bottom: 0;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.step-group:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.step-label {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #E8002E 0%, #ff4d79 100%);
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+  font-family: 'Outfit', sans-serif;
+  flex-shrink: 0;
+}
+
+.step-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.step-desc {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  padding-left: 3rem;
+}
+
+.step-textarea {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: var(--text-primary);
+  padding: 1.2rem;
+  border-radius: 12px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  transition: all 0.3s ease;
+}
+
+.step-textarea:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}

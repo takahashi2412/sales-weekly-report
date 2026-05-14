@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ログイン済みユーザーのみアクセス可能
+    // 自分のデータのみ読み書き可能
+    match /weeklyReports/{reportId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.userId;
+    }
+
+    // ユーザー情報は本人のみ読み書き可能
+    match /users/{userId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+    }
+
+    // その他のコレクションはログイン必須
+    match /{document=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
