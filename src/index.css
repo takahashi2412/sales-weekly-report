@@ -157,3 +157,13 @@ label {
   padding: 1.5rem;
   border-radius: var(--border-radius);
 }
+
+/* Global Mobile Responsive */
+@media (max-width: 768px) {
+  h1 { 
+    font-size: 1.5rem; 
+  }
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -8,10 +8,29 @@ export default function Layout() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const getPageTitle = () => {
+    if (location.pathname.startsWith('/dashboard')) return 'ダッシュボード';
+    if (location.pathname.startsWith('/form')) return '週次報告入力';
+    if (location.pathname.startsWith('/training')) return 'メンバー育成';
+    if (location.pathname.startsWith('/history')) return 'マイヒストリー';
+    if (location.pathname.startsWith('/accounts')) return 'アカウント管理';
+    if (location.pathname.startsWith('/teams')) return 'チーム・組織管理';
+    return '';
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
 
   return (
     <div className={`app-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className="sidebar glass-panel">
+      <div 
+        className={`mobile-overlay ${isMobileMenuOpen ? 'open' : ''}`} 
+        onClick={closeMobileMenu}
+      ></div>
+      <aside className={`sidebar glass-panel ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isSidebarCollapsed ? '1.5rem 0.5rem 1rem' : '1.5rem 1rem 1rem', position: 'relative' }}>
           {!isSidebarCollapsed && <img src="/logo.png" alt="Rush up Logo" style={{ maxWidth: '140px', height: 'auto', marginBottom: '1rem' }} />}
           {!isSidebarCollapsed && <h2 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)', textAlign: 'center' }}>Sales Weekly Report</h2>}
@@ -32,6 +51,7 @@ export default function Layout() {
               to="/dashboard" 
               className={`nav-item ${location.pathname.startsWith('/dashboard') ? 'active' : ''}`}
               title="ダッシュボード"
+              onClick={closeMobileMenu}
             >
               <LayoutDashboard size={20} />
               <span className="nav-label">ダッシュボード</span>
@@ -42,16 +62,18 @@ export default function Layout() {
             <>
               <Link 
                 to="/teams" 
-                className={`nav-item ${location.pathname === '/teams' ? 'active' : ''}`}
+                className={`nav-item ${location.pathname.startsWith('/teams') ? 'active' : ''}`}
                 title="チーム・組織管理"
+                onClick={closeMobileMenu}
               >
                 <Network size={20} />
                 <span className="nav-label">チーム・組織管理</span>
               </Link>
               <Link 
                 to="/accounts" 
-                className={`nav-item ${location.pathname === '/accounts' ? 'active' : ''}`}
+                className={`nav-item ${location.pathname.startsWith('/accounts') ? 'active' : ''}`}
                 title="アカウント管理"
+                onClick={closeMobileMenu}
               >
                 <Users size={20} />
                 <span className="nav-label">アカウント管理</span>
@@ -63,16 +85,18 @@ export default function Layout() {
             <>
               <Link 
                 to="/form" 
-                className={`nav-item ${location.pathname === '/form' ? 'active' : ''}`}
+                className={`nav-item ${location.pathname.startsWith('/form') ? 'active' : ''}`}
                 title="週次報告入力"
+                onClick={closeMobileMenu}
               >
                 <FileEdit size={20} />
                 <span className="nav-label">週次報告入力</span>
               </Link>
               <Link 
                 to="/training" 
-                className={`nav-item ${location.pathname === '/training' ? 'active' : ''}`}
+                className={`nav-item ${location.pathname.startsWith('/training') ? 'active' : ''}`}
                 title="メンバー育成"
+                onClick={closeMobileMenu}
               >
                 <BookOpen size={20} />
                 <span className="nav-label">メンバー育成</span>
@@ -82,8 +106,9 @@ export default function Layout() {
 
           <Link 
             to="/history" 
-            className={`nav-item ${location.pathname === '/history' ? 'active' : ''}`}
+            className={`nav-item ${location.pathname.startsWith('/history') ? 'active' : ''}`}
             title="マイヒストリー"
+            onClick={closeMobileMenu}
           >
             <FileText size={20} />
             <span className="nav-label">マイヒストリー</span>
@@ -100,6 +125,17 @@ export default function Layout() {
 
       <main className="main-content">
         <header className="topbar glass-panel">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button 
+              className="mobile-menu-btn" 
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={24} />
+            </button>
+            <h1 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+              {getPageTitle()}
+            </h1>
+          </div>
           <div className="user-info">
             <div className="avatar">{user?.name ? user.name[0] : 'U'}</div>
             <span>{user?.name} {user?.title ? `(${user.title})` : ''}</span>

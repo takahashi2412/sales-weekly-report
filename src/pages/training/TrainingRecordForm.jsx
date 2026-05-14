@@ -4,6 +4,7 @@ import { Save, Trash2, Calendar, Target, ChevronRight } from 'lucide-react';
 import { db } from '../../firebase';
 import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import Breadcrumb from '../../components/Breadcrumb';
 import './Training.css';
 
 export default function TrainingRecordForm() {
@@ -112,13 +113,11 @@ export default function TrainingRecordForm() {
   return (
     <div className="training-record-form">
       {/* Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-        <Link to="/training" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} className="hover-underline">メンバー育成</Link>
-        <ChevronRight size={16} />
-        <Link to={`/training/${memberId}`} style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} className="hover-underline">{member?.name || 'メンバー'}</Link>
-        <ChevronRight size={16} />
-        <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{isNew ? '新規記録の追加' : `${selectedDate} の記録`}</span>
-      </div>
+      <Breadcrumb items={[
+        { label: 'メンバー育成', path: '/training' },
+        { label: member?.name || 'メンバー', path: `/training/${memberId}` },
+        { label: isNew ? '新規記録の追加' : `${selectedDate} の記録` }
+      ]} />
 
       <div className="page-header" style={{ marginBottom: '2rem' }}>
         <div>

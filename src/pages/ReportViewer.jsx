@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ArrowLeft, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { exportToPPTX, exportToCSV } from '../utils/exportUtils';
+import Breadcrumb from '../components/Breadcrumb';
 import './WeeklyForm.css'; // Reuse some CSS
 
 export default function ReportViewer() {
@@ -72,13 +73,10 @@ export default function ReportViewer() {
 
   return (
     <div className="form-container" style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <button 
-        onClick={() => navigate('/dashboard')} 
-        className="btn btn-secondary" 
-        style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-      >
-        <ArrowLeft size={16} /> ダッシュボードへ戻る
-      </button>
+      <Breadcrumb items={[
+        { label: 'ダッシュボード', path: '/dashboard' },
+        { label: `${report.userName || 'メンバー'} の報告` }
+      ]} />
 
       <div className="glass-panel" style={{ padding: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>

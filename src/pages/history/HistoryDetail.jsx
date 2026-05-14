@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { db } from '../../firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import WeeklyForm from '../WeeklyForm';
+import Breadcrumb from '../../components/Breadcrumb';
 
 export default function HistoryDetail() {
   const { reportId } = useParams();
@@ -43,11 +44,10 @@ export default function HistoryDetail() {
   return (
     <div className="history-detail-page">
       {/* Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-        <Link to="/history" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} className="hover-underline">マイヒストリー</Link>
-        <ChevronRight size={16} />
-        <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{report.week} の報告</span>
-      </div>
+      <Breadcrumb items={[
+        { label: 'マイヒストリー', path: '/history' },
+        { label: `${report.week} の報告` }
+      ]} />
 
       {/* Render the Weekly Form in Edit Mode */}
       <WeeklyForm injectedReport={report} isHistoryDetail={true} />

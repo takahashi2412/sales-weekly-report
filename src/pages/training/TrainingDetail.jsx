@@ -4,6 +4,7 @@ import { ChevronRight, Plus, Calendar, Edit } from 'lucide-react';
 import { db } from '../../firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import Breadcrumb from '../../components/Breadcrumb';
 
 export default function TrainingDetail() {
   const { memberId } = useParams();
@@ -57,11 +58,10 @@ export default function TrainingDetail() {
   return (
     <div className="training-detail-page">
       {/* Breadcrumbs */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-        <Link to="/training" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }} className="hover-underline">メンバー育成</Link>
-        <ChevronRight size={16} />
-        <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{member.name}</span>
-      </div>
+      <Breadcrumb items={[
+        { label: 'メンバー育成', path: '/training' },
+        { label: member.name }
+      ]} />
 
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
         <div>

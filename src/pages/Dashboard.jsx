@@ -146,9 +146,9 @@ export default function Dashboard() {
     : 0;
 
   const kpiStats = [
-    { label: '組織全体 受注件数（最新週）', value: `${totalOrders}件`, subtext: '全責任者の合計', icon: <Target className="text-blue-500" /> },
-    { label: '組織全体 粗利（最新週）', value: `${totalGross} P`, subtext: '万円換算', icon: <TrendingUp className="text-green-500" /> },
-    { label: '平均週間ROI', value: `${avgRoi} 倍`, subtext: '全責任者の平均', icon: <BarChart3 className="text-red-500" /> },
+    { label: '組織全体 受注件数（最新週）', value: `${totalOrders}件`, subtext: '全責任者の合計', icon: <Target style={{ color: '#3b82f6' }} /> },
+    { label: '組織全体 粗利（最新週）', value: `${totalGross} P`, subtext: '万円換算', icon: <TrendingUp style={{ color: '#10b981' }} /> },
+    { label: '平均週間ROI', value: `${avgRoi} 倍`, subtext: '全責任者の平均', icon: <BarChart3 style={{ color: '#ef4444' }} /> },
   ];
 
   return (
@@ -164,7 +164,7 @@ export default function Dashboard() {
             <div className="stat-icon">{stat.icon}</div>
             <div className="stat-info">
               <h3>{stat.label}</h3>
-              <p className="stat-value">{stat.value}</p>
+              <p className="stat-value" style={{ fontSize: '2rem', fontWeight: 700 }}>{stat.value}</p>
               <p className="stat-subtext text-muted" style={{fontSize: '0.75rem', marginTop: '4px'}}>{stat.subtext}</p>
             </div>
           </div>
@@ -176,8 +176,8 @@ export default function Dashboard() {
           <h2>各責任者の採算状況（直近の提出）</h2>
         </div>
         
-        <div className="table-container">
-          <table className="reports-table">
+        <div className="table-container" style={{ overflowX: 'auto' }}>
+          <table className="reports-table" style={{ minWidth: '800px' }}>
             <thead>
               <tr>
                 <th>責任者名</th>
