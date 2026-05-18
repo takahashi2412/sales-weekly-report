@@ -45,6 +45,8 @@ import EducationHistory from './pages/education/EducationHistory';
 import EducationUserDetail from './pages/education/EducationUserDetail';
 import EducationThemeAnalysis from './pages/education/EducationThemeAnalysis';
 
+import Notifications from './pages/common/Notifications';
+
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -154,6 +156,8 @@ function AppRoutes() {
           <Route path="education/history" element={<EducationHistory />} />
           <Route path="education/themes" element={<EducationThemeAnalysis />} />
           <Route path="education/:userId" element={<EducationUserDetail />} />
+
+          <Route path="notifications" element={<Notifications />} />
           
           {/* Executive & Manager Routes */}
           <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>

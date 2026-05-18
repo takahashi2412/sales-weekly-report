@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History, ClipboardList, TrendingUp, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History, ClipboardList, TrendingUp, RefreshCw, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
@@ -245,6 +245,9 @@ export default function Layout() {
             </h1>
           </div>
           <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <Link to="/notifications" style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }} title="通知一覧">
+              <Bell size={20} />
+            </Link>
             {user?.currentProductId && (
               <span className="product-badge" style={{
                 background: 'var(--accent-primary)',
