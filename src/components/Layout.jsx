@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
@@ -57,12 +57,32 @@ export default function Layout() {
           {/* Dashboard available to Everyone */}
           <Link 
             to="/dashboard" 
-            className={`nav-item ${location.pathname.startsWith('/dashboard') ? 'active' : ''}`}
-            title="ダッシュボード"
+            className={`nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`}
+            title="総合ダッシュボード"
             onClick={closeMobileMenu}
           >
             <LayoutDashboard size={20} />
-            <span className="nav-label">ダッシュボード</span>
+            <span className="nav-label">総合ダッシュボード</span>
+          </Link>
+
+          <Link 
+            to="/kpi" 
+            className={`nav-item ${location.pathname === '/kpi' ? 'active' : ''}`}
+            title="KPIダッシュボード"
+            onClick={closeMobileMenu}
+          >
+            <Target size={20} />
+            <span className="nav-label">KPIダッシュボード</span>
+          </Link>
+
+          <Link 
+            to="/kpi/history" 
+            className={`nav-item ${location.pathname === '/kpi/history' ? 'active' : ''}`}
+            title="KPI履歴・推移"
+            onClick={closeMobileMenu}
+          >
+            <History size={20} />
+            <span className="nav-label">KPI履歴・推移</span>
           </Link>
 
           <Link 

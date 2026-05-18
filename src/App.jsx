@@ -19,6 +19,8 @@ import HistoryDetail from './pages/history/HistoryDetail';
 import CsvImport from './pages/kpi/CsvImport';
 import DailyKpiInput from './pages/kpi/DailyKpiInput';
 import KgiSetting from './pages/kpi/KgiSetting';
+import KpiDashboard from './pages/kpi/KpiDashboard';
+import KpiHistory from './pages/kpi/KpiHistory';
 
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -102,6 +104,8 @@ function AppRoutes() {
           {/* Dashboard and KPI input available to Everyone */}
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="dashboard/report/:id" element={<ReportViewer />} />
+          <Route path="kpi" element={<KpiDashboard />} />
+          <Route path="kpi/history" element={<KpiHistory />} />
           <Route path="kpi/input" element={<DailyKpiInput />} />
           <Route path="kpi/setting" element={<KgiSetting />} />
           

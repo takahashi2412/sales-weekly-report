@@ -1,0 +1,633 @@
+Rushup 営業プラットフォーム
+画面構成設計書
+Version 4.0（CSV自動取込対応版）
+最終更新：2026年5月18日
+項目
+内容
+最適化前
+160+ ページ（ロール別重複定義）
+最適化後
+49 ページ（v3:48 + K-07追加）
+ロール数
+3種（executive / manager / leader）
+v4主な変更
+★ K-07 CSV取込画面を追加（KPI管理 6→7画面）／K-02手動入力を簡易化／全画面で商材別表示対応
+
+
+v4.0 変更サマリー（v3.0からの差分）
+変更区分
+対象画面
+変更内容
+★ 新規追加
+K-07 CSV取込画面
+manager以上が商材ごとにCSVをアップロード。5ステップフロー（アップロード→パース→プレビュー→名寄せ→確定）
+▲ 位置づけ変更
+K-02 KPI日次入力
+メイン入力 → CSV不備時のバックアップ入力に変更。日次合計のみ入力モードを追加
+▲ 機能追加
+H-01 総合ダッシュボード
+商材別の全社合計ウィジェット（dailyKpiSummaryから瞬時表示）
+▲ 機能追加
+K-04 KPI履歴・推移
+source（manual/csv_import）バッジ表示でデータ取得元を区別
+
+
+1. 設計方針
+1.1 ページ数削減の4原則
+原則1：ロール別の画面は作らない。1画面でログインユーザーのロールに応じて表示内容を自動切替
+原則2：期間の切替はフィルターで行う
+原則3：「個人別」「組織別」「責任者別」はフィルターで切り替える
+原則4：商材別の表示切替もフィルターで行う
+1.2 ユーザーロール定義（3種）
+ロール
+対象役職
+閲覧範囲
+主な権限
+executive
+代表・取締役・役員・統括
+全社データ
+全データ閲覧・設定変更・商材マスタ編集
+manager
+副統括・MGR・PMGR・SMGR
+自組織データ
+部下データ閲覧・KGI承認・★CSV取込（v4追加）
+leader
+TL・一般
+個人データのみ
+自分のデータ入力・閲覧・KGI提案
+
+
+2. サイドバーメニュー構成
+No.
+メニュー名
+アイコン
+executive
+manager
+leader
+備考
+1
+ホーム
+Home
+✓
+✓
+✓
+
+2
+日報管理
+ClipboardList
+✓
+✓
+✓
+
+3
+KPI管理
+Target
+✓
+✓
+✓
+K-01〜K-07
+4
+進捗管理
+TrendingUp
+✓
+✓
+✓
+
+5
+改善管理
+RefreshCw
+✓
+✓
+✓
+
+6
+教育管理
+BookOpen
+✓
+✓
+—
+
+7
+AI分析
+Brain
+✓
+✓
+✓
+
+8
+レポート管理
+FileText
+✓
+✓
+—
+
+9
+管理設定
+Settings
+✓
+—
+—
+S-01〜S-06
+
+
+3. 全画面一覧（実際に開発する画面）
+3.1 ホーム（1画面）
+ID
+画面名
+URL
+対象ロール
+ロール別表示切替
+H-01
+▲ 総合ダッシュボード
+/
+全員
+executive: 全社KPI概要＋商材別合計サマリー　manager: 自チーム概要＋商材構成　leader: 個人概要＋担当商材名
+▲ v4変更：商材別の全社合計をdailyKpiSummaryから瞬時表示するウィジェットを追加
+3.2 日報管理（5画面）
+ID
+画面名
+URL
+対象ロール
+ロール別表示切替
+D-01
+日報ダッシュボード
+/daily
+全員
+executive: 全社提出状況　manager: 自チーム　leader: 自分
+D-02
+日報入力
+/daily/new
+全員
+全ロール共通の入力フォーム
+D-03
+日報履歴
+/daily/history
+全員
+フィルター付き履歴
+D-04
+日報詳細
+/daily/:id
+全員
+閲覧 + manager以上は確認ボタン
+D-05
+未提出・確認待ち
+/daily/pending
+manager以上
+未提出一覧 + 確認待ちをタブ切替
+3.3 KPI管理（7画面）　★v4でK-07を追加
+ID
+画面名
+URL
+対象ロール
+v4変更内容
+K-01
+KPIダッシュボード
+/kpi
+全員
+商材フィルター・商材別表示・全社合計表示
+K-02
+▲ KPI日次入力（手動）
+/kpi/daily
+全員
+▲ メイン入力→バックアップ入力。日次合計のみモード追加
+K-03
+KGI月次設定
+/kpi/targets
+全員
+商材別KGI・productMasters初期値・承認フロー
+K-04
+▲ KPI履歴・推移
+/kpi/history
+全員
+▲ source（manual/csv_import）バッジ表示
+K-05
+KPI比較・着地予測
+/kpi/analysis
+全員
+比較と着地予測をタブ切替
+K-06
+KPI詳細
+/kpi/:userId
+全員
+商材変更タイムライン含む
+★ K-07
+★ CSV取込
+/kpi/import
+manager以上
+★ 新規追加。商材別CSVを毎日アップロード
+K-07 CSV取込画面 詳細仕様（v4新規）
+項目
+仕様
+URL
+/kpi/import
+アクセス権限
+manager以上（leader不可）
+画面構成
+① 商材選択（visit/web/replace/meo）　② ファイルアップロード領域　③ プレビューテーブル　④ バリデーション結果　⑤ 名寄せ確認　⑥ 確定保存ボタン　⑦ 取込履歴一覧
+処理フロー
+商材選択→アップロード→Cloud Functionsパース→プレビュー→確認→確定→dailyKpi + dailyKpiSummaryに一括保存
+ファイル名検証
+「時間別_{商材ID}_YYYYMMDD_YYYYMMDD.csv」形式と一致するか確認
+合計行の扱い
+CSVの「合計」行を抽出してdailyKpiSummaryに保存（商材別の全社合計）
+K-07 画面フロー（5ステップ）
+Step
+画面状態
+処理内容
+1
+商材選択 + ファイル選択
+プルダウンで商材を選択（visit/web/replace/meo）→ CSVファイルをドラッグ&amp;ドロップ。ファイル名と選択商材の一致を検証
+2
+パース実行中
+Cloud Functions（parseHourlyKpiCsv）を呼出。CP932デコード・2行ヘッダー解析を実行
+3
+プレビュー表示
+パース結果を表形式で表示。メンバー名・各時間帯の数値・日次合計・全社合計を確認
+4
+名寄せ確認
+CSV内の名前とusers.nameのマッチング結果を表示。一致しない名前は手動マッピングまたはスキップ
+5
+確定保存
+「保存」ボタンでdailyKpi（個人別）+ dailyKpiSummary（全社合計）に一括書込。既存データがある場合は上書き確認モーダル表示
+K-02 KPI日次入力（手動）詳細仕様（v4変更）
+項目
+仕様
+用途
+CSV取込できなかった日・修正が必要な日の補完入力
+入力モード
+2モードを切替可能。①日次合計のみ入力モード（高速）　②時間帯別詳細入力モード（CSV同等）
+担当商材自動判定
+ログイン日の担当商材をuserProductAssignmentsから自動判定して表示
+source保存
+dailyKpi.source = &quot;manual&quot; で保存（CSV取込と区別）
+入力対象
+leader: 自分のみ／manager: 自分＋部下のデータも入力可（CSV取込済みデータの修正含む）
+3.4 進捗管理（4画面）
+ID
+画面名
+URL
+対象ロール
+ロール別表示切替
+P-01
+進捗ダッシュボード
+/progress
+全員
+executive: 全社　manager: 自チーム　leader: 自分
+P-02
+進捗詳細
+/progress/:userId
+全員
+期間フィルターで週次/月次切替
+P-03
+進捗履歴
+/progress/history
+全員
+期間・対象フィルター付き
+P-04
+比較分析
+/progress/compare
+manager以上
+メンバー間・チーム間の比較
+3.5 改善管理（5画面）
+ID
+画面名
+URL
+対象ロール
+説明
+I-01
+改善ダッシュボード
+/improve
+全員
+タスク状況サマリー
+I-02
+改善タスク一覧
+/improve/tasks
+全員
+フィルター付き一覧
+I-03
+改善タスク詳細
+/improve/tasks/:id
+全員
+タスク詳細・進捗更新
+I-04
+改善履歴
+/improve/history
+全員
+過去のタスク一覧
+I-05
+改善効果分析
+/improve/analysis
+manager以上
+改善前後の比較
+3.6 教育管理（6画面）
+ID
+画面名
+URL
+対象ロール
+説明
+E-01
+教育ダッシュボード
+/education
+manager以上
+教育状況サマリー
+E-02
+教育メモ入力
+/education/new
+manager以上
+部下を選択して教育記録
+E-03
+教育メモ履歴
+/education/history
+manager以上
+フィルター付き履歴
+E-04
+部下別教育詳細
+/education/:userId
+manager以上
+特定部下の教育履歴
+E-05
+教育テーマ別分析
+/education/themes
+manager以上
+テーマ別の効果分析
+E-06
+AI育成提案
+/education/ai
+manager以上
+AI個別育成提案（Phase 3）
+3.7 AI分析（5画面）
+ID
+画面名
+URL
+対象ロール
+説明
+A-01
+AI分析ダッシュボード
+/ai
+全員
+分析サマリー
+A-02
+個人AI分析
+/ai/personal
+全員
+自分のKPI予測（商材別基準値）
+A-03
+組織AI分析
+/ai/team
+manager以上
+チーム分析（商材構成考慮）
+A-04
+改善提案履歴
+/ai/suggestions
+全員
+過去のAI提案一覧
+A-05
+AI分析詳細
+/ai/report/:id
+全員
+個別分析レポート
+3.8 レポート管理（6画面）
+ID
+画面名
+URL
+対象ロール
+説明
+R-01
+レポートダッシュボード
+/reports
+manager以上
+提出状況サマリー
+R-02
+週次資料作成
+/reports/weekly/new
+manager以上
+既存WeeklyForm 5ステップ
+R-03
+下書き一覧
+/reports/drafts
+manager以上
+一時保存の下書き
+R-04
+提出履歴
+/reports/history
+manager以上
+週次/月次フィルター
+R-05
+レポート詳細（閲覧）
+/reports/:id
+manager以上
+全項目1ページ閲覧
+R-06
+承認管理
+/reports/approval
+manager以上
+承認待ち一覧
+3.9 管理設定（6画面）
+ID
+画面名
+URL
+対象ロール
+説明
+S-01
+ユーザー管理
+/settings/users
+executive
+アカウント作成・担当商材設定
+S-02
+組織管理
+/settings/org
+executive
+チーム階層・商材変更履歴
+S-03
+権限管理
+/settings/roles
+executive
+ロール割当
+S-04
+項目設定
+/settings/fields
+executive
+入力項目カスタマイズ
+S-05
+AI分析設定
+/settings/ai
+executive
+AI分析頻度・通知
+S-06
+商材マスタ管理
+/settings/products
+executive
+商材・転換率基準値の管理
+3.10 共通画面（3画面）
+ID
+画面名
+URL
+備考
+C-01
+ログイン
+/login
+メール/Google認証
+C-02
+プロフィール設定
+/profile
+名前・パスワード変更
+C-03
+通知一覧
+/notifications
+アラート・承認通知・CSV取込忘れ通知
+
+
+4. 画面数サマリー（v4）
+カテゴリ
+画面数
+v3→v4
+備考
+ホーム
+1
+機能追加
+商材別合計ウィジェット追加
+日報管理
+5
+変更なし
+
+KPI管理
+7
++1
+K-07 CSV取込画面を追加
+進捗管理
+4
+変更なし
+
+改善管理
+5
+変更なし
+
+教育管理
+6
+変更なし
+
+AI分析
+5
+変更なし
+
+レポート管理
+6
+変更なし
+
+管理設定
+6
+変更なし
+
+共通
+3
+変更なし
+
+合計
+49
+v3比+1
+CSV取込画面の追加
+
+
+5. Firestoreデータ構造（v4更新版）
+★=v3/v4新規追加　▲=v4変更
+コレクション
+主なフィールド
+書込権限
+説明
+productMasters
+productId, productName, kpiItems[], conversionRates{byRole}, validFrom, validTo, isActive
+executive
+商材マスタ
+userProductAssignments
+userId, productId, startDate, endDate, assignedBy
+manager以上
+商材割当履歴
+users
+uid, name, email, role, title, teamId, currentProductId, joinDate
+executive
+ユーザー情報
+teams
+teamId, name, leaderId, members[], parentTeamId, startDate, endDate
+executive
+チーム構成
+▲ dailyKpi
+userId, date, productId, source, csvFileName, importLogId, importedBy, hourlyData[14], totals{}
+本人+manager(CSV)
+▲ source・CSV関連フィールド追加
+★ dailyKpiSummary
+summaryId={productId}_{date}, productId, date, totals{}, memberCount, lastUpdated
+manager以上
+★ 商材別の全社日次合計
+★ csvImportLogs
+logId, fileName, productId, targetDate, importedBy, importedAt, totalMembers, successCount, status
+manager以上
+★ CSV取込履歴
+kpiTargets
+userId, period, productId, kgi{}, conversionRates{}, status, approvedBy
+本人→承認
+KGI月次設定
+weeklyReports
+userId, period, formData{}, status, approvedBy
+本人
+週次報告データ
+educationRecords
+userId, trainerId, date, theme, content, progress
+manager
+教育記録
+improveTasks
+userId, assignedBy, title, status, deadline, result
+manager以上
+改善タスク
+aiAnalysis
+userId, type, result, model, createdAt
+システム
+AI分析結果
+notifications
+userId, type, message, read, relatedId
+システム
+通知
+alerts
+userId, productId, alertType, threshold, actualValue, severity
+システム
+アラート
+
+
+6. 共通UIパーツ仕様
+パーツ名
+仕様
+パンくずリスト
+全詳細ページに配置。各階層クリック遷移可能
+フィルターバー
+期間（日/週/月/四半期）、対象（個人/チーム/全社）、商材（全/visit/web/replace/meo）
+ロール別表示制御
+useAuth()のuser.roleを参照
+商材表示制御
+userProductAssignmentsを参照し当日の担当商材を判定。トップバーにバッジ表示
+★ データ取得元バッジ
+★ dailyKpi一覧で「CSV取込」「手動入力」を色分けバッジで表示
+レスポンシブ
+768px以下でハンバーガーメニュー・テーブル横スクロール
+ローディング
+Firestore読込中はスケルトンスクリーン
+エラー表示
+トースト通知・フィールド下に赤字
+
+
+7. 画面遷移パターン
+7.1 基本パターン
+パターン1（一覧→詳細）：ダッシュボード→一覧→詳細
+パターン2（入力→確認）：入力フォーム→確認→完了
+パターン3（分析系）：ダッシュボード→フィルター→結果
+7.2 商材・CSV関連の遷移パターン（v4追加分）
+パターン
+遷移フロー
+KGI承認フロー
+K-03（提案）→ 通知 → K-03（manager承認）→ 確定
+商材変更フロー
+S-02 → メンバー選択 → 商材変更タブ → 変更登録 → 通知
+商材マスタ更新
+S-06 → 商材選択 → 翌月基準値設定 → 保存
+★ CSV取込フロー
+★ K-07 → 商材選択 → ファイルアップロード → プレビュー → 名寄せ → 確定 → dailyKpi + dailyKpiSummary に一括保存 → 取込履歴に記録
+★ CSV修正フロー
+★ K-04（履歴）→ 修正対象を選択 → K-02（手動入力モード）→ 修正保存 → source: &quot;manual&quot; に変更

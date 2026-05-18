@@ -46,7 +46,7 @@ export default function KgiSetting() {
   const fetchPending = async () => {
     if (!isManagerOrAbove) return;
     try {
-      const q = query(collection(db, 'kgiTargets'), where('status', '==', 'pending'));
+      const q = query(collection(db, 'kpiTargets'), where('status', '==', 'pending'));
       const snap = await getDocs(q);
       const list = [];
       snap.forEach(d => list.push({ _id: d.id, ...d.data(), commentInput: '' }));
@@ -72,7 +72,7 @@ export default function KgiSetting() {
     setLoading(true);
     try {
       const docId = `${user.uid}_${productId}_${month.replace('-', '')}`;
-      await setDoc(doc(db, 'kgiTargets', docId), {
+      await setDoc(doc(db, 'kpiTargets', docId), {
         userId: user.uid,
         userName: user.displayName || '名無し',
         productId,
@@ -105,7 +105,7 @@ export default function KgiSetting() {
     
     try {
       const status = isApprove ? 'approved' : 'rejected';
-      await updateDoc(doc(db, 'kgiTargets', targetId), {
+      await updateDoc(doc(db, 'kpiTargets', targetId), {
         status,
         approvedBy: user.uid,
         comment: comment || '',
