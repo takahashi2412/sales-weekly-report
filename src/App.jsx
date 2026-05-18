@@ -29,16 +29,14 @@ function AppRoutes() {
         <Route path="/" element={<Layout />}>
           
           {/* Default Route */}
-          <Route index element={
-            ['executive', 'manager'].includes(user?.role) 
-              ? <Navigate to="/dashboard" replace /> 
-              : <Navigate to="/history" replace />
-          } />
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          
+          {/* Dashboard available to Everyone */}
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="dashboard/report/:id" element={<ReportViewer />} />
           
           {/* Executive & Manager Routes */}
           <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="dashboard/report/:id" element={<ReportViewer />} />
             <Route path="form" element={<WeeklyForm isHistoryDetail={false} />} />
             <Route path="training">
               <Route index element={<TrainingList />} />

@@ -47,10 +47,10 @@ export default function Dashboard() {
         const now = Date.now();
         const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-        // Determine which users to show based on roleGroup and team hierarchy
+        // Determine which users to show based on role and team hierarchy
         let visibleUsers = usersList;
 
-        if (user?.roleGroup === 'manager') {
+        if (user?.role === 'manager') {
           // Find teams managed by this user
           const managedTeamIds = new Set();
           
@@ -74,8 +74,8 @@ export default function Dashboard() {
           visibleUsers = usersList.filter(u => 
             u.uid === user.uid || managedTeamIds.has(u.teamId)
           );
-        } else if (user?.roleGroup === 'member') {
-          // Members only see themselves (though routing should block them from dashboard anyway)
+        } else if (user?.role === 'leader') {
+          // Leaders only see themselves
           visibleUsers = usersList.filter(u => u.uid === user.uid);
         }
 
@@ -151,11 +151,23 @@ export default function Dashboard() {
     { label: '平均週間ROI', value: `${avgRoi} 倍`, subtext: '全責任者の平均', icon: <BarChart3 style={{ color: '#ef4444' }} /> },
   ];
 
+  const getHeaderTitle = () => {
+    if (user?.role === 'executive') return '全社総合ダッシュボード';
+    if (user?.role === 'manager') return 'チームダッシュボード';
+    return 'マイダッシュボード (KGI/KPI概要)';
+  };
+
+  const getHeaderDesc = () => {
+    if (user?.role === 'executive') return '全組織のサマリー（全社概要・商材別構成）';
+    if (user?.role === 'manager') return '自チームのサマリー（チーム概要・構成）';
+    return '個人のパフォーマンス概要と担当商材';
+  };
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h1>組織KPIダッシュボード</h1>
-        <p>システム管理者用：全営業組織の予算・採算とKPI達成状況のサマリー</p>
+        <h1>{getHeaderTitle()}</h1>
+        <p>{getHeaderDesc()}</p>
       </div>
 
       <div className="stats-grid">
@@ -173,7 +185,7 @@ export default function Dashboard() {
 
       <div className="reports-section glass-panel">
         <div className="section-header">
-          <h2>各責任者の採算状況（直近の提出）</h2>
+          <h2>{user?.role === 'leader' ? '最新の提出データ' : '各責任者・メンバーの状況（直近の提出）'}</h2>
         </div>
         
         <div className="table-container" style={{ overflowX: 'auto' }}>

@@ -54,17 +54,16 @@ export default function Layout() {
         </div>
         
         <nav className="sidebar-nav">
-          {isManagerOrAbove && (
-            <Link 
-              to="/dashboard" 
-              className={`nav-item ${location.pathname.startsWith('/dashboard') ? 'active' : ''}`}
-              title="ダッシュボード"
-              onClick={closeMobileMenu}
-            >
-              <LayoutDashboard size={20} />
-              <span className="nav-label">ダッシュボード</span>
-            </Link>
-          )}
+          {/* Dashboard available to Everyone */}
+          <Link 
+            to="/dashboard" 
+            className={`nav-item ${location.pathname.startsWith('/dashboard') ? 'active' : ''}`}
+            title="ダッシュボード"
+            onClick={closeMobileMenu}
+          >
+            <LayoutDashboard size={20} />
+            <span className="nav-label">ダッシュボード</span>
+          </Link>
 
           {isExecutive && (
             <>
