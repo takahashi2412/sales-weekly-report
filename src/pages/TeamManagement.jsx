@@ -6,8 +6,11 @@ import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase
 export default function TeamManagement() {
   const [teams, setTeams] = useState([]);
   const [users, setUsers] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingTeamId, setEditingTeamId] = useState(null);
+  const [activeTab, setActiveTab] = useState('tree'); // 'tree' or 'history'
 
   const [formData, setFormData] = useState({
     id: '', // Custom ID like 'team_sales1'
@@ -28,6 +31,16 @@ export default function TeamManagement() {
       const tList = [];
       teamsSnap.forEach(d => tList.push({ id: d.id, ...d.data() }));
       setTeams(tList);
+
+      const assignSnap = await getDocs(collection(db, 'userProductAssignments'));
+      const aList = [];
+      assignSnap.forEach(d => aList.push({ id: d.id, ...d.data() }));
+      setAssignments(aList.sort((a, b) => b.assignedAt - a.assignedAt));
+
+      const prodSnap = await getDocs(collection(db, 'productMasters'));
+      const pList = [];
+      prodSnap.forEach(d => pList.push({ id: d.id, ...d.data() }));
+      setProducts(pList);
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
@@ -160,15 +173,47 @@ export default function TeamManagement() {
 
   return (
     <div className="account-management">
-      <div className="page-header">
+      <div className="page-header" style={{ marginBottom: '1rem' }}>
         <div>
-          <h1>チーム・組織管理</h1>
-          <p>システム管理者専用: 会社の組織図（部署・チーム・責任者）を構築します</p>
+          <h1>チーム・組織管理 (S-02)</h1>
+          <p>システム管理者専用: 会社の組織図と商材変更履歴を管理します</p>
         </div>
       </div>
 
-      <div className="content-grid">
-        <div className="glass-panel form-section">
+      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
+        <button 
+          onClick={() => setActiveTab('tree')} 
+          style={{ 
+            padding: '0.5rem 1rem', 
+            background: 'none', 
+            border: 'none', 
+            borderBottom: activeTab === 'tree' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+            color: activeTab === 'tree' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+            fontWeight: activeTab === 'tree' ? 'bold' : 'normal',
+            cursor: 'pointer'
+          }}
+        >
+          組織ツリー管理
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')} 
+          style={{ 
+            padding: '0.5rem 1rem', 
+            background: 'none', 
+            border: 'none', 
+            borderBottom: activeTab === 'history' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+            color: activeTab === 'history' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+            fontWeight: activeTab === 'history' ? 'bold' : 'normal',
+            cursor: 'pointer'
+          }}
+        >
+          商材変更履歴
+        </button>
+      </div>
+
+      {activeTab === 'tree' ? (
+        <div className="content-grid">
+          <div className="glass-panel form-section">
           <div className="section-header">
             <h2>
               {editingTeamId ? <Edit2 size={20} /> : <Plus size={20} />} 
@@ -222,6 +267,52 @@ export default function TeamManagement() {
           </div>
         </div>
       </div>
+      ) : (
+      <div className="glass-panel" style={{ width: '100%' }}>
+        <div className="section-header">
+          <h2>商材変更履歴</h2>
+        </div>
+        <div className="table-container">
+          <table className="reports-table">
+            <thead>
+              <tr>
+                <th>変更日時</th>
+                <th>対象メンバー</th>
+                <th>割り当て商材</th>
+                <th>変更者</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignments.length === 0 ? (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '1rem' }}>
+                    {loading ? '読み込み中...' : '履歴はありません'}
+                  </td>
+                </tr>
+              ) : (
+                assignments.map(a => {
+                  const targetUser = users.find(u => u.id === a.userId);
+                  const assigner = users.find(u => u.id === a.assignedBy);
+                  const product = products.find(p => p.id === a.productId);
+                  return (
+                    <tr key={a.id}>
+                      <td>{new Date(a.assignedAt).toLocaleString('ja-JP')}</td>
+                      <td style={{ fontWeight: 'bold' }}>{targetUser ? targetUser.name : '不明なユーザー'}</td>
+                      <td>
+                        <span className="status-badge" style={{ background: 'var(--accent-primary)', color: 'white' }}>
+                          {product ? product.name : a.productId}
+                        </span>
+                      </td>
+                      <td>{assigner ? assigner.name : '不明な管理者'}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
     </div>
   );
 }

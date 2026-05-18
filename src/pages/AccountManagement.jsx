@@ -4,6 +4,8 @@ import { db, firebaseConfig, auth } from '../firebase';
 import { collection, doc, setDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useAuth } from '../context/AuthContext';
 import './AccountManagement.css';
 
 // Initialize a secondary app just for creating users so the admin doesn't get logged out
@@ -11,8 +13,10 @@ const secondaryApp = initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = getAuth(secondaryApp);
 
 export default function AccountManagement() {
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
@@ -22,8 +26,16 @@ export default function AccountManagement() {
     password: '',
     name: '',
     teamId: '',
-    title: '一般'
+    title: '一般',
+    role: 'leader',
+    currentProductId: ''
   });
+
+  const roles = [
+    { id: 'executive', name: 'Executive（全権限）' },
+    { id: 'manager', name: 'Manager（自組織管理）' },
+    { id: 'leader', name: 'Leader（一般）' }
+  ];
 
   const titles = ['一般', 'TL', 'SM', 'PMG', 'MG', '副統括', '統括', '役員', '取締役', '代表'];
 
@@ -40,6 +52,11 @@ export default function AccountManagement() {
       const tList = [];
       teamsSnap.forEach(d => tList.push({ id: d.id, ...d.data() }));
       setTeams(tList);
+
+      const productsSnap = await getDocs(collection(db, 'productMasters'));
+      const pList = [];
+      productsSnap.forEach(d => pList.push({ id: d.id, ...d.data() }));
+      setProducts(pList);
     } catch (error) {
       console.error("Error fetching data: ", error);
     } finally {
@@ -62,7 +79,9 @@ export default function AccountManagement() {
       password: '', // Leave empty for edit
       name: user.name,
       teamId: user.teamId || '',
-      title: user.title
+      title: user.title,
+      role: user.role || 'leader',
+      currentProductId: user.currentProductId || ''
     });
     // Scroll to top smoothly
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -70,7 +89,7 @@ export default function AccountManagement() {
 
   const cancelEdit = () => {
     setEditingUserId(null);
-    setFormData({ email: '', password: '', name: '', teamId: '', title: '一般' });
+    setFormData({ email: '', password: '', name: '', teamId: '', title: '一般', role: 'leader', currentProductId: '' });
   };
 
   const handlePasswordReset = async (userEmail) => {
@@ -96,13 +115,33 @@ export default function AccountManagement() {
       const selectedTeam = teams.find(t => t.id === formData.teamId);
 
       if (editingUserId) {
+        const oldUser = accounts.find(a => a.id === editingUserId);
+
         // --- UPDATE EXISTING USER PROFILE ---
         await updateDoc(doc(db, 'users', editingUserId), {
           name: formData.name,
           teamId: formData.teamId,
           branch: selectedTeam ? selectedTeam.name : '未設定',
-          title: formData.title
+          title: formData.title,
+          currentProductId: formData.currentProductId
         });
+
+        // 担当商材が変更された場合は履歴に記録
+        if (oldUser && oldUser.currentProductId !== formData.currentProductId) {
+          const assignmentRef = doc(collection(db, 'userProductAssignments'));
+          await setDoc(assignmentRef, {
+            userId: editingUserId,
+            productId: formData.currentProductId,
+            assignedBy: user.uid,
+            assignedAt: Date.now()
+          });
+        }
+
+        // 権限も更新する場合は Cloud Functions を呼ぶ
+        const functions = getFunctions();
+        const assignRole = httpsCallable(functions, 'assignUserRole');
+        await assignRole({ uid: editingUserId, role: formData.role, title: formData.title });
+
         alert(`メンバー情報（${formData.name}）を更新しました！\n※メールアドレス・パスワードの変更はここではできません。`);
         cancelEdit();
       } else {
@@ -121,11 +160,29 @@ export default function AccountManagement() {
           teamId: formData.teamId,
           branch: selectedTeam ? selectedTeam.name : '未設定', // backward compat
           title: formData.title,
+          currentProductId: formData.currentProductId,
+          role: formData.role, // Functions側でも上書きされるが初期表示用に設定
           createdAt: Date.now()
         });
 
+        // 初回担当商材の履歴を記録
+        if (formData.currentProductId) {
+          const assignmentRef = doc(collection(db, 'userProductAssignments'));
+          await setDoc(assignmentRef, {
+            userId: newUserId,
+            productId: formData.currentProductId,
+            assignedBy: user.uid,
+            assignedAt: Date.now()
+          });
+        }
+
+        // 4. Call Cloud Function to assign Custom Claim
+        const functions = getFunctions();
+        const assignRole = httpsCallable(functions, 'assignUserRole');
+        await assignRole({ uid: newUserId, role: formData.role, title: formData.title });
+
         alert(`アカウントを作成しました！\n氏名: ${formData.name}`);
-        setFormData({ email: '', password: '', name: '', teamId: '', title: '一般' });
+        setFormData({ email: '', password: '', name: '', teamId: '', title: '一般', role: 'leader', currentProductId: '' });
       }
       
       await fetchData();
@@ -219,10 +276,29 @@ export default function AccountManagement() {
                 </select>
               </div>
               <div className="form-group">
+                <label>担当商材</label>
+                <select name="currentProductId" value={formData.currentProductId} onChange={handleChange} required>
+                  <option value="">-- 担当商材を選択 --</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
                 <label>役職</label>
                 <select name="title" value={formData.title} onChange={handleChange} required>
                   {titles.map(t => (
                     <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>システム権限 (Role)</label>
+                <select name="role" value={formData.role} onChange={handleChange} required>
+                  {roles.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
               </div>
@@ -251,7 +327,8 @@ export default function AccountManagement() {
                   <th>氏名</th>
                   <th>メールアドレス</th>
                   <th>所属・チーム</th>
-                  <th>役職</th>
+                  <th>担当商材</th>
+                  <th>役職 / 権限</th>
                   <th>アクション</th>
                 </tr>
               </thead>
@@ -271,9 +348,17 @@ export default function AccountManagement() {
                         <td>{acc.email}</td>
                         <td>{teamName}</td>
                         <td>
-                          <span className="status-badge" style={{background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}>
-                            {acc.title}
-                          </span>
+                          {products.find(p => p.id === acc.currentProductId)?.name || '未設定'}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <span className="status-badge" style={{background: 'var(--bg-secondary)', color: 'var(--text-primary)'}}>
+                              {acc.title}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {acc.role}
+                            </span>
+                          </div>
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>

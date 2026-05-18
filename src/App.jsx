@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AccountManagement from './pages/AccountManagement';
 import TeamManagement from './pages/TeamManagement';
+import ProductManagement from './pages/ProductManagement';
 import WeeklyForm from './pages/WeeklyForm';
 import ReportViewer from './pages/ReportViewer';
 
@@ -50,6 +51,7 @@ function AppRoutes() {
           <Route element={<AuthGuard allowedRoles={['executive']} />}>
             <Route path="accounts" element={<AccountManagement />} />
             <Route path="teams" element={<TeamManagement />} />
+            <Route path="products" element={<ProductManagement />} />
           </Route>
 
           {/* Routes for Everyone (leader, manager, executive) */}

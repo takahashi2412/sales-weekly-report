@@ -6,17 +6,25 @@ import './Layout.css';
 
 export default function Layout() {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, isExecutive, isManagerOrAbove } = useAuth();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const PRODUCTS = {
+    'visit': 'HP（訪問）',
+    'web': 'Web',
+    'replace': 'リプレイス',
+    'meo': 'MEO'
+  };
 
   const getPageTitle = () => {
     if (location.pathname.startsWith('/dashboard')) return 'ダッシュボード';
     if (location.pathname.startsWith('/form')) return '週次報告入力';
     if (location.pathname.startsWith('/training')) return 'メンバー育成';
     if (location.pathname.startsWith('/history')) return 'マイヒストリー';
-    if (location.pathname.startsWith('/accounts')) return 'アカウント管理';
-    if (location.pathname.startsWith('/teams')) return 'チーム・組織管理';
+    if (location.pathname.startsWith('/accounts')) return 'アカウント管理 (S-01)';
+    if (location.pathname.startsWith('/teams')) return 'チーム・組織管理 (S-02)';
+    if (location.pathname.startsWith('/products')) return '商材マスタ管理 (S-06)';
     return '';
   };
 
@@ -46,7 +54,7 @@ export default function Layout() {
         </div>
         
         <nav className="sidebar-nav">
-          {['executive', 'manager'].includes(user?.roleGroup) && (
+          {isManagerOrAbove && (
             <Link 
               to="/dashboard" 
               className={`nav-item ${location.pathname.startsWith('/dashboard') ? 'active' : ''}`}
@@ -58,7 +66,7 @@ export default function Layout() {
             </Link>
           )}
 
-          {user?.roleGroup === 'executive' && (
+          {isExecutive && (
             <>
               <Link 
                 to="/teams" 
@@ -78,10 +86,19 @@ export default function Layout() {
                 <Users size={20} />
                 <span className="nav-label">アカウント管理</span>
               </Link>
+              <Link 
+                to="/products" 
+                className={`nav-item ${location.pathname.startsWith('/products') ? 'active' : ''}`}
+                title="商材マスタ管理"
+                onClick={closeMobileMenu}
+              >
+                <BookOpen size={20} />
+                <span className="nav-label">商材マスタ管理</span>
+              </Link>
             </>
           )}
 
-          {['executive', 'manager'].includes(user?.roleGroup) && (
+          {isManagerOrAbove && (
             <>
               <Link 
                 to="/form" 
@@ -136,9 +153,23 @@ export default function Layout() {
               {getPageTitle()}
             </h1>
           </div>
-          <div className="user-info">
-            <div className="avatar">{user?.name ? user.name[0] : 'U'}</div>
-            <span>{user?.name} {user?.title ? `(${user.title})` : ''}</span>
+          <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {user?.currentProductId && (
+              <span className="product-badge" style={{
+                background: 'var(--accent-primary)',
+                color: 'white',
+                padding: '0.2rem 0.6rem',
+                borderRadius: '12px',
+                fontSize: '0.8rem',
+                fontWeight: 'bold'
+              }}>
+                {PRODUCTS[user.currentProductId] || user.currentProductId}担当
+              </span>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className="avatar">{user?.name ? user.name[0] : 'U'}</div>
+              <span>{user?.name} {user?.title ? `(${user.title})` : ''}</span>
+            </div>
           </div>
         </header>
         <div className="content-area animate-fade-in">
