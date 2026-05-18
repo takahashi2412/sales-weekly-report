@@ -10,40 +10,36 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        let userProfile = { title: '一般', name: currentUser.email.split('@')[0], teamId: '' };
-        
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
         try {
-          const docRef = doc(db, 'users', currentUser.uid);
+          const tokenResult = await fbUser.getIdTokenResult(true);
+          const role = tokenResult.claims.role || 'leader';
+          
+          let userProfile = { title: '一般', name: fbUser.email.split('@')[0], teamId: '', currentProductId: '' };
+          const docRef = doc(db, 'users', fbUser.uid);
           const docSnap = await getDoc(docRef);
+          
           if (docSnap.exists()) {
-            userProfile = docSnap.data();
-          } else if (currentUser.email === 'k.takahashi@rush-up.co.jp') {
-            // Fallback for root admin if not in users collection yet
-            userProfile = { title: '代表', name: '高橋 圭', teamId: 'root' };
+            userProfile = { ...userProfile, ...docSnap.data() };
           }
+
+          setUser({
+            uid: fbUser.uid,
+            email: fbUser.email,
+            displayName: fbUser.displayName || userProfile.name,
+            role,
+            title: userProfile.title,
+            name: userProfile.name,
+            teamId: userProfile.teamId,
+            currentProductId: userProfile.currentProductId,
+            // For backward compatibility with existing code during transition
+            roleGroup: role === 'executive' ? 'executive' : (role === 'manager' ? 'manager' : 'member')
+          });
         } catch (error) {
           console.error("Error fetching user profile:", error);
+          setUser(null);
         }
-
-        // Determine roleGroup based on title
-        const executives = ['代表', '取締役', '役員'];
-        const managers = ['統括', '副統括', 'MG', 'PMG', 'SM', 'TL'];
-        
-        let roleGroup = 'member';
-        if (executives.includes(userProfile.title)) roleGroup = 'executive';
-        else if (managers.includes(userProfile.title)) roleGroup = 'manager';
-
-        setUser({ 
-          uid: currentUser.uid, 
-          email: currentUser.email,
-          title: userProfile.title,
-          name: userProfile.name,
-          teamId: userProfile.teamId,
-          roleGroup: roleGroup, // 'executive', 'manager', 'member'
-          role: roleGroup === 'executive' ? 'admin' : 'manager' // backward compatibility
-        });
       } else {
         setUser(null);
       }
@@ -71,8 +67,11 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const isExecutive = user?.role === 'executive';
+  const isManagerOrAbove = ['executive', 'manager'].includes(user?.role);
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, isExecutive, isManagerOrAbove }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
+import AuthGuard from './components/AuthGuard';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AccountManagement from './pages/AccountManagement';
@@ -22,49 +23,44 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
       
-      {/* Protected Routes */}
-      <Route 
-        path="/" 
-        element={user ? <Layout /> : <Navigate to="/login" replace />}
-      >
-        {/* Default route based on roleGroup */}
-        <Route index element={
-          user?.roleGroup === 'executive' ? <Navigate to="/dashboard" replace /> : 
-          (user?.roleGroup === 'manager' ? <Navigate to="/dashboard" replace /> : <Navigate to="/history" replace />)
-        } />
-        
-        {/* Everyone can see dashboard and reports (Dashboard handles data filtering internally) */}
-        <Route path="dashboard" element={['executive', 'manager'].includes(user?.roleGroup) ? <Dashboard /> : <Navigate to="/" replace />} />
-        <Route path="dashboard/report/:id" element={['executive', 'manager'].includes(user?.roleGroup) ? <ReportViewer /> : <Navigate to="/" replace />} />
-        
-        {/* Executive only routes */}
-        {user?.roleGroup === 'executive' && (
-          <>
-            <Route path="accounts" element={<AccountManagement />} />
-            <Route path="teams" element={<TeamManagement />} />
-          </>
-        )}
-
-        {/* Manager & Executive routes */}
-        {['executive', 'manager'].includes(user?.roleGroup) && (
-          <>
+      {/* Protected Routes using AuthGuard */}
+      <Route element={<AuthGuard />}>
+        <Route path="/" element={<Layout />}>
+          
+          {/* Default Route */}
+          <Route index element={
+            ['executive', 'manager'].includes(user?.role) 
+              ? <Navigate to="/dashboard" replace /> 
+              : <Navigate to="/history" replace />
+          } />
+          
+          {/* Executive & Manager Routes */}
+          <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="dashboard/report/:id" element={<ReportViewer />} />
             <Route path="form" element={<WeeklyForm isHistoryDetail={false} />} />
             <Route path="training">
               <Route index element={<TrainingList />} />
               <Route path=":memberId" element={<TrainingDetail />} />
               <Route path=":memberId/record/:recordId" element={<TrainingRecordForm />} />
             </Route>
-          </>
-        )}
+          </Route>
+          
+          {/* Executive Only Routes */}
+          <Route element={<AuthGuard allowedRoles={['executive']} />}>
+            <Route path="accounts" element={<AccountManagement />} />
+            <Route path="teams" element={<TeamManagement />} />
+          </Route>
 
-        {/* Everyone */}
-        <Route path="history">
-          <Route index element={<HistoryList />} />
-          <Route path=":reportId" element={<HistoryDetail />} />
+          {/* Routes for Everyone (leader, manager, executive) */}
+          <Route path="history">
+            <Route index element={<HistoryList />} />
+            <Route path=":reportId" element={<HistoryDetail />} />
+          </Route>
+
+          {/* Catch-all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
-
-        {/* Catch-all to redirect invalid paths based on role */}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );
