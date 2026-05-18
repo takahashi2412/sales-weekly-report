@@ -22,6 +22,17 @@ import KgiSetting from './pages/kpi/KgiSetting';
 import KpiDashboard from './pages/kpi/KpiDashboard';
 import KpiHistory from './pages/kpi/KpiHistory';
 
+import DailyDashboard from './pages/daily/DailyDashboard';
+import DailyInput from './pages/daily/DailyInput';
+import DailyHistory from './pages/daily/DailyHistory';
+import DailyDetail from './pages/daily/DailyDetail';
+import DailyPending from './pages/daily/DailyPending';
+
+import ProgressDashboard from './pages/progress/ProgressDashboard';
+import ProgressDetail from './pages/progress/ProgressDetail';
+import ProgressHistory from './pages/progress/ProgressHistory';
+import ProgressCompare from './pages/progress/ProgressCompare';
+
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -108,6 +119,17 @@ function AppRoutes() {
           <Route path="kpi/history" element={<KpiHistory />} />
           <Route path="kpi/input" element={<DailyKpiInput />} />
           <Route path="kpi/setting" element={<KgiSetting />} />
+
+          <Route path="daily" element={<DailyDashboard />} />
+          <Route path="daily/new" element={<DailyInput />} />
+          <Route path="daily/history" element={<DailyHistory />} />
+          <Route path="daily/pending" element={<DailyPending />} />
+          <Route path="daily/:id" element={<DailyDetail />} />
+
+          <Route path="progress" element={<ProgressDashboard />} />
+          <Route path="progress/history" element={<ProgressHistory />} />
+          <Route path="progress/compare" element={<ProgressCompare />} />
+          <Route path="progress/:userId" element={<ProgressDetail />} />
           
           {/* Executive & Manager Routes */}
           <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>

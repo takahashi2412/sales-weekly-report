@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History } from 'lucide-react';
+import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History, ClipboardList, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
@@ -66,6 +66,17 @@ export default function Layout() {
           </Link>
 
           <Link 
+            to="/daily" 
+            className={`nav-item ${location.pathname.startsWith('/daily') ? 'active' : ''}`}
+            title="日報管理"
+            onClick={closeMobileMenu}
+          >
+            <ClipboardList size={20} />
+            <span className="nav-label">日報管理</span>
+          </Link>
+
+          {/* KPI Management is handled by /kpi */}
+          <Link 
             to="/kpi" 
             className={`nav-item ${location.pathname === '/kpi' ? 'active' : ''}`}
             title="KPIダッシュボード"
@@ -74,7 +85,6 @@ export default function Layout() {
             <Target size={20} />
             <span className="nav-label">KPIダッシュボード</span>
           </Link>
-
           <Link 
             to="/kpi/history" 
             className={`nav-item ${location.pathname === '/kpi/history' ? 'active' : ''}`}
@@ -84,7 +94,6 @@ export default function Layout() {
             <History size={20} />
             <span className="nav-label">KPI履歴・推移</span>
           </Link>
-
           <Link 
             to="/kpi/input" 
             className={`nav-item ${location.pathname.startsWith('/kpi/input') ? 'active' : ''}`}
@@ -94,7 +103,6 @@ export default function Layout() {
             <FileText size={20} />
             <span className="nav-label">日次KPI入力</span>
           </Link>
-
           <Link 
             to="/kpi/setting" 
             className={`nav-item ${location.pathname.startsWith('/kpi/setting') ? 'active' : ''}`}
@@ -116,6 +124,16 @@ export default function Layout() {
               <span className="nav-label">実績CSV取込</span>
             </Link>
           )}
+
+          <Link 
+            to="/progress" 
+            className={`nav-item ${location.pathname.startsWith('/progress') ? 'active' : ''}`}
+            title="進捗管理"
+            onClick={closeMobileMenu}
+          >
+            <TrendingUp size={20} />
+            <span className="nav-label">進捗管理</span>
+          </Link>
 
           {isExecutive && (
             <>

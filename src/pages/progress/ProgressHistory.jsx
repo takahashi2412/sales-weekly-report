@@ -1,19 +1,85 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { History } from 'lucide-react';
+import '../Dashboard.css';
 
 export default function ProgressHistory() {
-  const { user } = useAuth();
+  const { user, isManagerOrAbove } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        let q;
+        if (isManagerOrAbove) {
+          q = query(collection(db, 'kpiTargets'), orderBy('targetMonth', 'desc'), limit(50));
+        } else {
+          q = query(collection(db, 'kpiTargets'), where('userId', '==', user.uid), orderBy('targetMonth', 'desc'), limit(20));
+        }
+        const snap = await getDocs(q);
+        const list = [];
+        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        setHistory(list);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [user, isManagerOrAbove]);
 
   return (
     <div className="page-container" style={{ padding: '2rem' }}>
       <div className="page-header" style={{ marginBottom: '2rem' }}>
         <h1>進捗履歴 (P-03)</h1>
-        <p>期間・対象フィルター付き履歴</p>
+        <p>過去の月次目標と進捗結果の履歴</p>
       </div>
       
       <div className="glass-panel" style={{ padding: '2rem' }}>
-        <p style={{ color: 'var(--text-secondary)' }}>この画面は現在開発中（Phase 2 モックアップ）です。</p>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+          <History size={20} /> 月次進捗履歴
+        </h2>
+        
+        {loading ? (
+          <div style={{ textAlign: 'center' }}>読み込み中...</div>
+        ) : (
+          <div className="table-container">
+            <table className="reports-table">
+              <thead>
+                <tr>
+                  <th>対象月</th>
+                  <th>ユーザー</th>
+                  <th>対象商材</th>
+                  <th>ステータス</th>
+                  <th>月間目標アポ数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.length === 0 ? (
+                  <tr><td colSpan="5" style={{ textAlign: 'center' }}>履歴データがありません</td></tr>
+                ) : (
+                  history.map((h, i) => (
+                    <tr key={i}>
+                      <td>{h.targetMonth}</td>
+                      <td>{h.userName}</td>
+                      <td>{h.productId}</td>
+                      <td>
+                        {h.status === 'approved' ? <span style={{ color: '#10b981' }}>承認済 (有効)</span> :
+                         h.status === 'pending' ? <span style={{ color: '#f59e0b' }}>承認待ち</span> : 
+                         <span style={{ color: '#ef4444' }}>却下</span>}
+                      </td>
+                      <td>{h.monthlyOrderTarget || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
