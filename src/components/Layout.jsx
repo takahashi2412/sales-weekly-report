@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
@@ -63,6 +63,26 @@ export default function Layout() {
           >
             <LayoutDashboard size={20} />
             <span className="nav-label">ダッシュボード</span>
+          </Link>
+
+          <Link 
+            to="/kpi/input" 
+            className={`nav-item ${location.pathname.startsWith('/kpi/input') ? 'active' : ''}`}
+            title="日次KPI入力 (手動)"
+            onClick={closeMobileMenu}
+          >
+            <FileText size={20} />
+            <span className="nav-label">日次KPI入力</span>
+          </Link>
+
+          <Link 
+            to="/kpi/setting" 
+            className={`nav-item ${location.pathname.startsWith('/kpi/setting') ? 'active' : ''}`}
+            title="KGI月次設定"
+            onClick={closeMobileMenu}
+          >
+            <Target size={20} />
+            <span className="nav-label">KGI月次設定</span>
           </Link>
 
           {isManagerOrAbove && (

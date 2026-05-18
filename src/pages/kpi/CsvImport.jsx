@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Upload, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
-import '../history/History.css'; // Reuse table/panel styles
 
 const PRODUCTS = [
   { id: 'visit', name: 'HP（訪問）' },

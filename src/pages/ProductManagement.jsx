@@ -9,11 +9,20 @@ export default function ProductManagement() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   
+  const defaultRates = {
+    manager: { appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 },
+    pmgr:    { appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 },
+    smgr:    { appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 },
+    tl:      { appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 },
+    general: { appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 },
+  };
+
   const [formData, setFormData] = useState({
     id: '',
     name: '',
     description: '',
-    isActive: true
+    isActive: true,
+    conversionRates: defaultRates
   });
 
   const fetchData = async () => {
@@ -41,6 +50,19 @@ export default function ProductManagement() {
     }));
   };
 
+  const handleRateChange = (role, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      conversionRates: {
+        ...prev.conversionRates,
+        [role]: {
+          ...prev.conversionRates[role],
+          [field]: parseFloat(value) || 0
+        }
+      }
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -52,11 +74,12 @@ export default function ProductManagement() {
         name: formData.name,
         description: formData.description,
         isActive: formData.isActive,
+        conversionRates: formData.conversionRates,
         updatedAt: Date.now()
       }, { merge: true });
 
       alert('商材情報を保存しました。');
-      setFormData({ id: '', name: '', description: '', isActive: true });
+      setFormData({ id: '', name: '', description: '', isActive: true, conversionRates: defaultRates });
       setEditingId(null);
       await fetchData();
     } catch (error) {
@@ -73,14 +96,15 @@ export default function ProductManagement() {
       id: p._id,
       name: p.name || '',
       description: p.description || '',
-      isActive: p.isActive !== false
+      isActive: p.isActive !== false,
+      conversionRates: p.conversionRates || defaultRates
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
-    setFormData({ id: '', name: '', description: '', isActive: true });
+    setFormData({ id: '', name: '', description: '', isActive: true, conversionRates: defaultRates });
   };
 
   return (
@@ -134,7 +158,7 @@ export default function ProductManagement() {
                 style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)' }}
               />
             </div>
-            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
               <input
                 type="checkbox"
                 name="isActive"
@@ -143,6 +167,42 @@ export default function ProductManagement() {
                 id="isActiveCheck"
               />
               <label htmlFor="isActiveCheck" style={{ margin: 0, cursor: 'pointer' }}>有効（一覧に表示する）</label>
+            </div>
+
+            <div className="form-group">
+              <label>コンバージョン基準値設定 (KGI初期値)</label>
+              <div style={{ overflowX: 'auto', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <table className="reports-table" style={{ minWidth: '600px', fontSize: '0.85rem' }}>
+                  <thead>
+                    <tr>
+                      <th>役職</th>
+                      <th>アポ率 (例: 0.013)</th>
+                      <th>採用率 (例: 0.4)</th>
+                      <th>受注率 (例: 0.2)</th>
+                      <th>月次目標受注数</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {['manager', 'pmgr', 'smgr', 'tl', 'general'].map(role => (
+                      <tr key={role}>
+                        <td style={{ fontWeight: 'bold' }}>{role}</td>
+                        <td>
+                          <input type="number" step="0.001" style={{ width: '80px', padding: '0.25rem' }} value={formData.conversionRates[role]?.appointRate ?? 0} onChange={e => handleRateChange(role, 'appointRate', e.target.value)} />
+                        </td>
+                        <td>
+                          <input type="number" step="0.01" style={{ width: '80px', padding: '0.25rem' }} value={formData.conversionRates[role]?.adoptionRate ?? 0} onChange={e => handleRateChange(role, 'adoptionRate', e.target.value)} />
+                        </td>
+                        <td>
+                          <input type="number" step="0.01" style={{ width: '80px', padding: '0.25rem' }} value={formData.conversionRates[role]?.orderRate ?? 0} onChange={e => handleRateChange(role, 'orderRate', e.target.value)} />
+                        </td>
+                        <td>
+                          <input type="number" style={{ width: '80px', padding: '0.25rem' }} value={formData.conversionRates[role]?.monthlyOrderTarget ?? 0} onChange={e => handleRateChange(role, 'monthlyOrderTarget', e.target.value)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>

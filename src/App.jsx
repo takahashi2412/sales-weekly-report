@@ -17,6 +17,8 @@ import TrainingRecordForm from './pages/training/TrainingRecordForm';
 import HistoryList from './pages/history/HistoryList';
 import HistoryDetail from './pages/history/HistoryDetail';
 import CsvImport from './pages/kpi/CsvImport';
+import DailyKpiInput from './pages/kpi/DailyKpiInput';
+import KgiSetting from './pages/kpi/KgiSetting';
 
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -97,9 +99,11 @@ function AppRoutes() {
           {/* Default Route */}
           <Route index element={<Navigate to="/dashboard" replace />} />
           
-          {/* Dashboard available to Everyone */}
+          {/* Dashboard and KPI input available to Everyone */}
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="dashboard/report/:id" element={<ReportViewer />} />
+          <Route path="kpi/input" element={<DailyKpiInput />} />
+          <Route path="kpi/setting" element={<KgiSetting />} />
           
           {/* Executive & Manager Routes */}
           <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>
