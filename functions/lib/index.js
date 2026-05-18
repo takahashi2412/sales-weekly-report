@@ -1,6 +1,20 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignUserRole = void 0;
+exports.seedProducts = exports.assignUserRole = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -21,5 +35,66 @@ exports.assignUserRole = functions.https.onCall(async (data, context) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     return { success: true };
+});
+__exportStar(require("./csvImport"), exports);
+// ------------------------------------------------------------------
+// Temporary Seed Function (Call via HTTP to seed productMasters)
+// ------------------------------------------------------------------
+exports.seedProducts = functions.https.onRequest(async (req, res) => {
+    const products = [
+        {
+            productId: 'visit', productName: 'HP（訪問）', productLabel: '訪問',
+            isActive: true, validFrom: '2026-05-01', validTo: null,
+            conversionRates: {
+                manager: { appointRate: 0.013, adoptionRate: 0.40, orderRate: 0.20, monthlyOrderTarget: 1 },
+                pmgr: { appointRate: 0.013, adoptionRate: 0.40, orderRate: 0.20, monthlyOrderTarget: 2 },
+                smgr: { appointRate: 0.013, adoptionRate: 0.40, orderRate: 0.20, monthlyOrderTarget: 3 },
+                tl: { appointRate: 0.013, adoptionRate: 0.40, orderRate: 0.20, monthlyOrderTarget: 4 },
+                general: { appointRate: 0.013, adoptionRate: 0.40, orderRate: 0.20, monthlyOrderTarget: 5 },
+            }
+        },
+        {
+            productId: 'web', productName: 'Web', productLabel: 'Web',
+            isActive: true, validFrom: '2026-05-01', validTo: null,
+            conversionRates: {
+                manager: { appointRate: 0.020, adoptionRate: 0.50, orderRate: 0.15, monthlyOrderTarget: 1 },
+                pmgr: { appointRate: 0.020, adoptionRate: 0.50, orderRate: 0.15, monthlyOrderTarget: 2 },
+                smgr: { appointRate: 0.020, adoptionRate: 0.50, orderRate: 0.15, monthlyOrderTarget: 3 },
+                tl: { appointRate: 0.020, adoptionRate: 0.50, orderRate: 0.15, monthlyOrderTarget: 4 },
+                general: { appointRate: 0.020, adoptionRate: 0.50, orderRate: 0.15, monthlyOrderTarget: 5 },
+            }
+        },
+        {
+            productId: 'replace', productName: 'リプレイス', productLabel: 'リプ',
+            isActive: true, validFrom: '2026-05-01', validTo: null,
+            conversionRates: {
+                manager: { appointRate: 0.035, adoptionRate: 1.0, orderRate: 0.25, monthlyOrderTarget: 3 },
+                pmgr: { appointRate: 0.035, adoptionRate: 1.0, orderRate: 0.25, monthlyOrderTarget: 5 },
+                smgr: { appointRate: 0.035, adoptionRate: 1.0, orderRate: 0.25, monthlyOrderTarget: 6 },
+                tl: { appointRate: 0.040, adoptionRate: 1.0, orderRate: 0.25, monthlyOrderTarget: 8 },
+                general: { appointRate: 0.040, adoptionRate: 1.0, orderRate: 0.25, monthlyOrderTarget: 8 },
+            }
+        },
+        {
+            productId: 'meo', productName: 'MEO', productLabel: 'MEO',
+            isActive: true, validFrom: '2026-05-01', validTo: null,
+            conversionRates: {
+                manager: { appointRate: 0.020, adoptionRate: 1.0, orderRate: 0.20, monthlyOrderTarget: 2 },
+                pmgr: { appointRate: 0.020, adoptionRate: 1.0, orderRate: 0.20, monthlyOrderTarget: 4 },
+                smgr: { appointRate: 0.020, adoptionRate: 1.0, orderRate: 0.20, monthlyOrderTarget: 5 },
+                tl: { appointRate: 0.020, adoptionRate: 1.0, orderRate: 0.20, monthlyOrderTarget: 6 },
+                general: { appointRate: 0.020, adoptionRate: 1.0, orderRate: 0.20, monthlyOrderTarget: 7 },
+            }
+        },
+    ];
+    try {
+        for (const p of products) {
+            await admin.firestore().collection('productMasters').doc(p.productId).set(Object.assign(Object.assign({}, p), { createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
+        }
+        res.send("Seeded products successfully!");
+    }
+    catch (err) {
+        res.status(500).send(err.message);
+    }
 });
 //# sourceMappingURL=index.js.map

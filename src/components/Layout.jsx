@@ -65,6 +65,18 @@ export default function Layout() {
             <span className="nav-label">ダッシュボード</span>
           </Link>
 
+          {isManagerOrAbove && (
+            <Link 
+              to="/kpi/csv" 
+              className={`nav-item ${location.pathname.startsWith('/kpi/csv') ? 'active' : ''}`}
+              title="実績CSV取込"
+              onClick={closeMobileMenu}
+            >
+              <FileSpreadsheet size={20} />
+              <span className="nav-label">実績CSV取込</span>
+            </Link>
+          )}
+
           {isExecutive && (
             <>
               <Link 
