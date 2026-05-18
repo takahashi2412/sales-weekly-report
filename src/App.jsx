@@ -33,6 +33,18 @@ import ProgressDetail from './pages/progress/ProgressDetail';
 import ProgressHistory from './pages/progress/ProgressHistory';
 import ProgressCompare from './pages/progress/ProgressCompare';
 
+import ImproveDashboard from './pages/improve/ImproveDashboard';
+import ImproveTasks from './pages/improve/ImproveTasks';
+import ImproveTaskDetail from './pages/improve/ImproveTaskDetail';
+import ImproveHistory from './pages/improve/ImproveHistory';
+import ImproveAnalysis from './pages/improve/ImproveAnalysis';
+
+import EducationDashboard from './pages/education/EducationDashboard';
+import EducationNew from './pages/education/EducationNew';
+import EducationHistory from './pages/education/EducationHistory';
+import EducationUserDetail from './pages/education/EducationUserDetail';
+import EducationThemeAnalysis from './pages/education/EducationThemeAnalysis';
+
 import { db } from './firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
@@ -130,6 +142,18 @@ function AppRoutes() {
           <Route path="progress/history" element={<ProgressHistory />} />
           <Route path="progress/compare" element={<ProgressCompare />} />
           <Route path="progress/:userId" element={<ProgressDetail />} />
+
+          <Route path="improve" element={<ImproveDashboard />} />
+          <Route path="improve/tasks" element={<ImproveTasks />} />
+          <Route path="improve/tasks/:id" element={<ImproveTaskDetail />} />
+          <Route path="improve/history" element={<ImproveHistory />} />
+          <Route path="improve/analysis" element={<ImproveAnalysis />} />
+
+          <Route path="education" element={<EducationDashboard />} />
+          <Route path="education/new" element={<EducationNew />} />
+          <Route path="education/history" element={<EducationHistory />} />
+          <Route path="education/themes" element={<EducationThemeAnalysis />} />
+          <Route path="education/:userId" element={<EducationUserDetail />} />
           
           {/* Executive & Manager Routes */}
           <Route element={<AuthGuard allowedRoles={['executive', 'manager']} />}>

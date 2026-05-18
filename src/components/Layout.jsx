@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History, ClipboardList, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, FileEdit, LogOut, Users, FileText, Network, BookOpen, Menu, ChevronLeft, Target, FileSpreadsheet, History, ClipboardList, TrendingUp, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
@@ -134,6 +134,28 @@ export default function Layout() {
             <TrendingUp size={20} />
             <span className="nav-label">進捗管理</span>
           </Link>
+
+          <Link 
+            to="/improve" 
+            className={`nav-item ${location.pathname.startsWith('/improve') ? 'active' : ''}`}
+            title="改善管理"
+            onClick={closeMobileMenu}
+          >
+            <RefreshCw size={20} />
+            <span className="nav-label">改善管理</span>
+          </Link>
+
+          {isManagerOrAbove && (
+            <Link 
+              to="/education" 
+              className={`nav-item ${location.pathname.startsWith('/education') ? 'active' : ''}`}
+              title="教育管理"
+              onClick={closeMobileMenu}
+            >
+              <BookOpen size={20} />
+              <span className="nav-label">教育管理</span>
+            </Link>
+          )}
 
           {isExecutive && (
             <>
