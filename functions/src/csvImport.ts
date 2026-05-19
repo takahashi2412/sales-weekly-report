@@ -1,11 +1,18 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as iconv from 'iconv-lite';
-import { parse } from 'csv-parse/sync';
+// 依存パッケージを遅延ロード（関数実行時にのみロード）
+let iconv: any;
+let csvParse: any;
+
+function loadDeps() {
+  if (!iconv) iconv = require('iconv-lite');
+  if (!csvParse) csvParse = require('csv-parse/sync').parse;
+}
 
 const PRODUCT_IDS = ['visit', 'web', 'replace', 'meo'];
 
 export const parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
+  loadDeps();  // ← この行を追加
   // 1. 権限チェック：manager以上
   if (!context.auth || !['executive','manager'].includes(context.auth.token.role)) {
     throw new functions.https.HttpsError('permission-denied', 'Only manager+ can import CSV.');
@@ -44,7 +51,7 @@ export const parseHourlyKpiCsv = functions.https.onCall(async (data, context) =>
   const text = iconv.decode(buffer, 'cp932');
 
   // 5. CSVパース
-  const records = parse(text, { skip_empty_lines: true });
+  const records = csvParse(text, { skip_empty_lines: true });
 
   // 6. バリデーション
   if (records.length < 4) {

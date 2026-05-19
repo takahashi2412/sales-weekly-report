@@ -1,18 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedProducts = exports.assignUserRole = void 0;
 const functions = require("firebase-functions");
@@ -69,7 +55,15 @@ exports.assignUserRole = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('failed-precondition', `権限設定に失敗しました: ${error.message}`);
     }
 });
-__exportStar(require("./csvImport"), exports);
+// csvImport を安全にロード（失敗してもassignUserRoleに影響しない）
+try {
+    const csvModule = require('./csvImport');
+    exports.parseHourlyKpiCsv = csvModule.parseHourlyKpiCsv;
+    exports.commitCsvImport = csvModule.commitCsvImport;
+}
+catch (e) {
+    console.error('csvImport module load failed:', e);
+}
 exports.seedProducts = functions.https.onRequest(async (req, res) => {
     const products = [
         {

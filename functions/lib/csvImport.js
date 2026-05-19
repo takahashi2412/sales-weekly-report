@@ -3,11 +3,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.commitCsvImport = exports.parseHourlyKpiCsv = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const iconv = require("iconv-lite");
-const sync_1 = require("csv-parse/sync");
+// 依存パッケージを遅延ロード（関数実行時にのみロード）
+let iconv;
+let csvParse;
+function loadDeps() {
+    if (!iconv)
+        iconv = require('iconv-lite');
+    if (!csvParse)
+        csvParse = require('csv-parse/sync').parse;
+}
 const PRODUCT_IDS = ['visit', 'web', 'replace', 'meo'];
 exports.parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
     var _a;
+    loadDeps(); // ← この行を追加
     // 1. 権限チェック：manager以上
     if (!context.auth || !['executive', 'manager'].includes(context.auth.token.role)) {
         throw new functions.https.HttpsError('permission-denied', 'Only manager+ can import CSV.');
@@ -37,7 +45,7 @@ exports.parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
     const buffer = Buffer.from(fileBuffer, 'base64');
     const text = iconv.decode(buffer, 'cp932');
     // 5. CSVパース
-    const records = (0, sync_1.parse)(text, { skip_empty_lines: true });
+    const records = csvParse(text, { skip_empty_lines: true });
     // 6. バリデーション
     if (records.length < 4) {
         throw new functions.https.HttpsError('invalid-argument', 'Not enough rows.');

@@ -60,7 +60,14 @@ export const assignUserRole = functions.https.onCall(async (data, context) => {
   }
 });
 
-export * from './csvImport';
+// csvImport を安全にロード（失敗してもassignUserRoleに影響しない）
+try {
+  const csvModule = require('./csvImport');
+  exports.parseHourlyKpiCsv = csvModule.parseHourlyKpiCsv;
+  exports.commitCsvImport = csvModule.commitCsvImport;
+} catch (e) {
+  console.error('csvImport module load failed:', e);
+}
 
 export const seedProducts = functions.https.onRequest(async (req, res) => {
   const products = [
