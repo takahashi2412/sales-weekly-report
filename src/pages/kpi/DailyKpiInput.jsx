@@ -124,10 +124,10 @@ export default function DailyKpiInput() {
         }
       }
 
-      const docId = `${targetUserId}_${productId}_${date.replace(/-/g, '')}`;
+      const docId = `${targetUserId}_${productId}_${date}`;
       await setDoc(doc(db, 'dailyKpi', docId), {
         userId: targetUserId,
-        date: date.replace(/-/g, ''), 
+        date: date, 
         productId,
         productVersion: 1,
         source: 'manual',

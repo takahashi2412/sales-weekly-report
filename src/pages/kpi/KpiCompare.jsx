@@ -59,8 +59,10 @@ export default function KpiCompare() {
         const pastDate = new Date();
         pastDate.setDate(today.getDate() - parseInt(dateRange, 10));
         
-        const endStr = today.toISOString().split('T')[0].replace(/-/g, '');
-        const startStr = pastDate.toISOString().split('T')[0].replace(/-/g, '');
+        const formatDateLocal = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        
+        const endStr = formatDateLocal(today);
+        const startStr = formatDateLocal(pastDate);
 
         const qRecent = query(
           collection(db, 'dailyKpi'),
@@ -88,9 +90,9 @@ export default function KpiCompare() {
         setCompareData(Object.values(aggRecent).sort((a,b) => b.total - a.total));
 
         // --- 2. 月末着地予測 ---
-        const monthStr = selectedMonth.replace('-', ''); // YYYYMM
-        const startMonthStr = `${monthStr}01`;
-        const endMonthStr = `${monthStr}31`;
+        const monthStr = selectedMonth; // e.g. "2026-05"
+        const startMonthStr = `${monthStr}-01`;
+        const endMonthStr = `${monthStr}-31`;
         
         const qMonth = query(
           collection(db, 'dailyKpi'),
@@ -103,12 +105,21 @@ export default function KpiCompare() {
         // Fetch KGI Targets
         const kgiMap = {};
         for (const m of teamMembers) {
-          const kgiRef = doc(db, 'users', m.id, 'kgiSettings', monthStr);
+          const docId = `${m.id}_${selectedProduct}_${monthStr.replace('-', '')}`;
+          const kgiRef = doc(db, 'kpiTargets', docId);
           const kgiSnap = await getDoc(kgiRef);
-          if (kgiSnap.exists()) {
-            kgiMap[m.id] = kgiSnap.data().targets?.[selectedProduct]?.appoint || 0;
+          if (kgiSnap.exists() && kgiSnap.data().status === 'approved') {
+            const data = kgiSnap.data();
+            // KGIアポ目標 = 目標受注数 / 受注率 / 採用率 (概算)
+            // もしくは単純にデータがなければ0。
+            // K-03で目標受注数と各率が入力されるため、逆算して必要なアポ数を算出する
+            let targetAppoint = 0;
+            if (data.monthlyOrderTarget && data.orderRate && data.adoptionRate) {
+                targetAppoint = Math.ceil(data.monthlyOrderTarget / data.orderRate / data.adoptionRate);
+            }
+            kgiMap[m.id] = targetAppoint || 0;
           } else {
-            kgiMap[m.id] = 0; // Default or not set
+            kgiMap[m.id] = 0; 
           }
         }
 

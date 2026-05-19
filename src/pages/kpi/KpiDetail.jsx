@@ -103,7 +103,7 @@ export default function KpiDetail() {
     const fetchKpi = async () => {
       setLoading(true);
       try {
-        const formattedDate = selectedDate.replace(/-/g, '');
+        const formattedDate = selectedDate;
         
         const q = query(
           collection(db, 'dailyKpi'),
