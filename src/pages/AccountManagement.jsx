@@ -140,9 +140,12 @@ export default function AccountManagement() {
         // 権限も更新する場合は Cloud Functions を呼ぶ
         const functions = getFunctions();
         const assignRole = httpsCallable(functions, 'assignUserRole');
-        const targetUser = accounts.find(a => a.id === editingUserId);
-        const authUid = targetUser?.uid || editingUserId;
-        await assignRole({ uid: authUid, role: formData.role, title: formData.title });
+        await assignRole({ 
+          email: formData.email, 
+          role: formData.role, 
+          title: formData.title, 
+          firestoreDocId: editingUserId 
+        });
 
         alert(`メンバー情報（${formData.name}）を更新しました！\n※メールアドレス・パスワードの変更はここではできません。`);
         cancelEdit();
@@ -182,7 +185,12 @@ export default function AccountManagement() {
         // 4. Call Cloud Function to assign Custom Claim
         const functions = getFunctions();
         const assignRole = httpsCallable(functions, 'assignUserRole');
-        await assignRole({ uid: newUserId, role: formData.role, title: formData.title });
+        await assignRole({ 
+          email: formData.email, 
+          role: formData.role, 
+          title: formData.title, 
+          firestoreDocId: newUserId 
+        });
 
         alert(`アカウントを作成しました！\n氏名: ${formData.name}`);
         setFormData({ email: '', password: '', name: '', teamId: '', title: '一般', role: 'leader', currentProductId: '' });
