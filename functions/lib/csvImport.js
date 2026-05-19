@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.commitCsvImport = exports.parseHourlyKpiCsv = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const auditLog_1 = require("./auditLog");
 // 依存パッケージを遅延ロード（関数実行時にのみロード）
 let iconv;
 let csvParse;
@@ -180,6 +181,20 @@ exports.commitCsvImport = functions.https.onCall(async (data, context) => {
     // 4. ログを完了に更新
     batch.update(logRef, { successCount, status: 'completed' });
     await batch.commit();
+    await (0, auditLog_1.recordAuditLog)({
+        action: 'csvImport',
+        executorUid: context.auth.uid,
+        target: {
+            type: 'csv',
+            id: logRef.id,
+            name: fileName
+        },
+        metadata: {
+            productId,
+            targetDate,
+            recordCount: successCount
+        }
+    });
     return { success: true, successCount, logId: logRef.id };
 });
 //# sourceMappingURL=csvImport.js.map

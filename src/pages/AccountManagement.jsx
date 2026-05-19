@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserPlus, Users, Eye, EyeOff, Edit2, X, KeyRound } from 'lucide-react';
 import { db, firebaseConfig, auth } from '../firebase';
-import { collection, doc, setDoc, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -147,6 +147,26 @@ export default function AccountManagement() {
           firestoreDocId: editingUserId 
         });
 
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'accountUpdate',
+          executedBy: {
+            uid: user.uid,
+            email: user.email,
+            name: user.name || '',
+            role: user.role || ''
+          },
+          target: {
+            type: 'user',
+            id: editingUserId,
+            name: formData.name
+          },
+          changes: {
+            before: oldUser,
+            after: formData
+          },
+          timestamp: serverTimestamp()
+        });
+
         alert(`メンバー情報（${formData.name}）を更新しました！\n※メールアドレス・パスワードの変更はここではできません。`);
         cancelEdit();
       } else {
@@ -190,6 +210,26 @@ export default function AccountManagement() {
           role: formData.role, 
           title: formData.title, 
           firestoreDocId: newUserId 
+        });
+
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'accountCreate',
+          executedBy: {
+            uid: user.uid,
+            email: user.email,
+            name: user.name || '',
+            role: user.role || ''
+          },
+          target: {
+            type: 'user',
+            id: newUserId,
+            name: formData.name
+          },
+          changes: {
+            before: null,
+            after: formData
+          },
+          timestamp: serverTimestamp()
         });
 
         alert(`アカウントを作成しました！\n氏名: ${formData.name}`);

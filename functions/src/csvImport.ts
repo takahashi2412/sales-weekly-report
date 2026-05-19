@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { recordAuditLog } from './auditLog';
 // 依存パッケージを遅延ロード（関数実行時にのみロード）
 let iconv: any;
 let csvParse: any;
@@ -203,5 +204,21 @@ export const commitCsvImport = functions.https.onCall(async (data, context) => {
   batch.update(logRef, { successCount, status: 'completed' });
 
   await batch.commit();
+
+  await recordAuditLog({
+    action: 'csvImport',
+    executorUid: context.auth.uid,
+    target: { 
+      type: 'csv', 
+      id: logRef.id, 
+      name: fileName 
+    },
+    metadata: {
+      productId,
+      targetDate,
+      recordCount: successCount
+    }
+  });
+
   return { success: true, successCount, logId: logRef.id };
 });

@@ -3,12 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedProducts = exports.assignUserRole = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const auditLog_1 = require("./auditLog");
 admin.initializeApp();
 /**
  * assignUserRole - ロール割当Cloud Function（v4修正版）
  * 根本修正：UIDではなくメールアドレスでFirebase Authユーザーを特定する。
  */
 exports.assignUserRole = functions.https.onCall(async (data, context) => {
+    var _a, _b;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です。');
     }
@@ -45,6 +47,21 @@ exports.assignUserRole = functions.https.onCall(async (data, context) => {
                 });
             }
         }
+        const oldRole = userDoc.exists ? (_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.role : '';
+        const oldTitle = userDoc.exists ? (_b = userDoc.data()) === null || _b === void 0 ? void 0 : _b.title : '';
+        await (0, auditLog_1.recordAuditLog)({
+            action: 'roleChange',
+            executorUid: context.auth.uid,
+            target: {
+                type: 'user',
+                id: authUid,
+                name: email
+            },
+            changes: {
+                before: { role: oldRole, title: oldTitle },
+                after: { role, title }
+            }
+        });
         return { success: true, authUid, email, role };
     }
     catch (error) {

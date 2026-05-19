@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Network, Plus, Trash2, Edit2, X } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 
 export default function TeamManagement() {
+  const { user } = useAuth();
   const [teams, setTeams] = useState([]);
   const [users, setUsers] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -83,11 +85,33 @@ export default function TeamManagement() {
     try {
       if (editingTeamId) {
         // Update existing team
+        const oldTeam = teams.find(t => t.id === editingTeamId);
         await updateDoc(doc(db, 'teams', editingTeamId), {
           name: formData.name,
           parentId: formData.parentId,
           managerId: formData.managerId
         });
+
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'teamUpdate',
+          executedBy: {
+            uid: user.uid,
+            email: user.email,
+            name: user.name || '',
+            role: user.role || ''
+          },
+          target: {
+            type: 'team',
+            id: editingTeamId,
+            name: formData.name
+          },
+          changes: {
+            before: oldTeam || null,
+            after: formData
+          },
+          timestamp: serverTimestamp()
+        });
+
         alert('組織情報を更新しました！');
         cancelEdit();
       } else {
@@ -99,6 +123,27 @@ export default function TeamManagement() {
           managerId: formData.managerId,
           createdAt: Date.now()
         });
+
+        await addDoc(collection(db, 'auditLogs'), {
+          action: 'teamCreate',
+          executedBy: {
+            uid: user.uid,
+            email: user.email,
+            name: user.name || '',
+            role: user.role || ''
+          },
+          target: {
+            type: 'team',
+            id: teamId,
+            name: formData.name
+          },
+          changes: {
+            before: null,
+            after: formData
+          },
+          timestamp: serverTimestamp()
+        });
+
         alert('組織を追加しました！');
         setFormData({ id: '', name: '', parentId: 'root', managerId: '' });
       }
@@ -117,7 +162,29 @@ export default function TeamManagement() {
     
     setLoading(true);
     try {
+      const targetTeam = teams.find(t => t.id === id);
       await deleteDoc(doc(db, 'teams', id));
+      
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'teamDelete',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'team',
+          id,
+          name: targetTeam ? targetTeam.name : id
+        },
+        changes: {
+          before: targetTeam || null,
+          after: null
+        },
+        timestamp: serverTimestamp()
+      });
+
       await fetchData();
     } catch (error) {
       console.error("Error deleting team:", error);

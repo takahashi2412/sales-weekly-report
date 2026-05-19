@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { recordAuditLog } from './auditLog';
 
 admin.initializeApp();
 
@@ -48,6 +49,24 @@ export const assignUserRole = functions.https.onCall(async (data, context) => {
         });
       }
     }
+
+    const oldRole = userDoc.exists ? userDoc.data()?.role : '';
+    const oldTitle = userDoc.exists ? userDoc.data()?.title : '';
+
+    await recordAuditLog({
+      action: 'roleChange',
+      executorUid: context.auth.uid,
+      target: { 
+        type: 'user', 
+        id: authUid, 
+        name: email 
+      },
+      changes: {
+        before: { role: oldRole, title: oldTitle },
+        after: { role, title }
+      }
+    });
+
     return { success: true, authUid, email, role };
   } catch (error: any) {
     console.error('assignUserRole error:', error);

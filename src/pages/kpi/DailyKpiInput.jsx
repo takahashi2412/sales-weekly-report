@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
+import { doc, setDoc, getDocs, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Save, Clock, FileText } from 'lucide-react';
 
@@ -135,6 +135,26 @@ export default function DailyKpiInput() {
         totals: totalsToSave,
         createdAt: Date.now(),
         updatedAt: Date.now()
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'manualKpiInput',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'kpi',
+          id: docId,
+          name: `手動KPI入力 (${date})`
+        },
+        changes: {
+          before: null,
+          after: totalsToSave
+        },
+        timestamp: serverTimestamp()
       });
 
       alert('日次KPIを保存しました。');

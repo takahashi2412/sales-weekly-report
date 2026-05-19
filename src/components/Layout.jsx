@@ -25,6 +25,7 @@ export default function Layout() {
     if (location.pathname.startsWith('/accounts')) return 'アカウント管理 (S-01)';
     if (location.pathname.startsWith('/teams')) return 'チーム・組織管理 (S-02)';
     if (location.pathname.startsWith('/products')) return '商材マスタ管理 (S-06)';
+    if (location.pathname.startsWith('/settings/audit')) return '監査ログ (S-07)';
     return '';
   };
 
@@ -194,6 +195,15 @@ export default function Layout() {
               >
                 <BookOpen size={20} />
                 <span className="nav-label">商材マスタ管理</span>
+              </Link>
+              <Link 
+                to="/settings/audit" 
+                className={`nav-item ${location.pathname.startsWith('/settings/audit') ? 'active' : ''}`}
+                title="監査ログ"
+                onClick={closeMobileMenu}
+              >
+                <ClipboardList size={20} />
+                <span className="nav-label">監査ログ</span>
               </Link>
             </>
           )}

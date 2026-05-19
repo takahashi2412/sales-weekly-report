@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Package, Plus, Edit2, CheckCircle, XCircle } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 import './AccountManagement.css'; // Reuse styles
 
 export default function ProductManagement() {
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -69,6 +71,8 @@ export default function ProductManagement() {
     try {
       // document ID is the product ID (e.g. 'visit')
       const docId = editingId || formData.id;
+      const oldProduct = editingId ? products.find(p => p._id === docId) : null;
+      
       await setDoc(doc(db, 'productMasters', docId), {
         id: docId,
         name: formData.name,
@@ -77,6 +81,26 @@ export default function ProductManagement() {
         conversionRates: formData.conversionRates,
         updatedAt: Date.now()
       }, { merge: true });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: editingId ? 'productUpdate' : 'productCreate',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'product',
+          id: docId,
+          name: formData.name
+        },
+        changes: {
+          before: oldProduct || null,
+          after: formData
+        },
+        timestamp: serverTimestamp()
+      });
 
       alert('商材情報を保存しました。');
       setFormData({ id: '', name: '', description: '', isActive: true, conversionRates: defaultRates });

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { collection, doc, setDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Target, CheckCircle, XCircle, Send, AlertTriangle } from 'lucide-react';
 
@@ -111,6 +111,27 @@ export default function KgiSetting() {
         comment: comment || '',
         updatedAt: serverTimestamp()
       });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: isApprove ? 'kgiApprove' : 'kgiReject',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'kpi',
+          id: targetId,
+          name: 'KGI申請'
+        },
+        changes: {
+          before: { status: 'pending' },
+          after: { status, comment: comment || '' }
+        },
+        timestamp: serverTimestamp()
+      });
+
       alert(isApprove ? '承認しました。' : '差し戻しました。');
       fetchPending();
     } catch (e) {

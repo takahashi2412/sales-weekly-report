@@ -9,6 +9,7 @@ import TeamManagement from './pages/TeamManagement';
 import ProductManagement from './pages/ProductManagement';
 import WeeklyForm from './pages/WeeklyForm';
 import ReportViewer from './pages/ReportViewer';
+import AuditLog from './pages/settings/AuditLog';
 
 import TrainingList from './pages/training/TrainingList';
 import TrainingDetail from './pages/training/TrainingDetail';
@@ -180,6 +181,7 @@ function AppRoutes() {
             <Route path="accounts" element={<AccountManagement />} />
             <Route path="teams" element={<TeamManagement />} />
             <Route path="products" element={<ProductManagement />} />
+            <Route path="settings/audit" element={<AuditLog />} />
           </Route>
 
           {/* Routes for Everyone (leader, manager, executive) */}
