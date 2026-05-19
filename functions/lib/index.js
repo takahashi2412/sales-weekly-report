@@ -18,47 +18,58 @@ exports.seedProducts = exports.assignUserRole = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
+/**
+ * assignUserRole - ロール割当Cloud Function（v4修正版）
+ * 根本修正：UIDではなくメールアドレスでFirebase Authユーザーを特定する。
+ */
 exports.assignUserRole = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'ログインが必要です。');
+    }
+    if (context.auth.token.role !== 'executive') {
+        throw new functions.https.HttpsError('permission-denied', 'executive権限が必要です。');
+    }
+    const { email, role, title, firestoreDocId } = data;
+    if (!email) {
+        throw new functions.https.HttpsError('invalid-argument', 'メールアドレスが必要です。');
+    }
+    if (!['executive', 'manager', 'leader'].includes(role)) {
+        throw new functions.https.HttpsError('invalid-argument', '無効なロールです。');
+    }
     try {
-        if (!context.auth || context.auth.token.role !== 'executive') {
-            throw new functions.https.HttpsError('permission-denied', 'Only executive can assign roles.');
+        const authUser = await admin.auth().getUserByEmail(email);
+        const authUid = authUser.uid;
+        await admin.auth().setCustomUserClaims(authUid, { role });
+        const docId = firestoreDocId || authUid;
+        const userDocRef = admin.firestore().collection('users').doc(docId);
+        const userDoc = await userDocRef.get();
+        if (userDoc.exists) {
+            await userDocRef.update({
+                role, title: title || '', uid: authUid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         }
-        const { email, firestoreDocId, role, title } = data;
-        if (!['executive', 'manager', 'leader'].includes(role)) {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid role.');
+        else {
+            const querySnap = await admin.firestore().collection('users')
+                .where('email', '==', email).limit(1).get();
+            if (!querySnap.empty) {
+                await querySnap.docs[0].ref.update({
+                    role, title: title || '', uid: authUid,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            }
         }
-        let authUser;
-        try {
-            authUser = await admin.auth().getUserByEmail(email); // emailで検索
-        }
-        catch (e) {
-            throw new functions.https.HttpsError('not-found', '対象のアカウントがFirebase Authに存在しません: ' + email);
-        }
-        // Set custom user claims using the Auth UID
-        await admin.auth().setCustomUserClaims(authUser.uid, { role });
-        // Sync role to users collection using the provided firestoreDocId
-        const updateData = {
-            role,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-        if (title !== undefined) {
-            updateData.title = title;
-        }
-        await admin.firestore().collection('users').doc(firestoreDocId).update(updateData);
-        return { success: true };
+        return { success: true, authUid, email, role };
     }
     catch (error) {
-        console.error("Error in assignUserRole:", error);
-        let message = error.message || String(error);
-        if (error.code === 'auth/user-not-found' || message.includes('user record')) {
-            message = '対象のアカウントがFirebase Authに存在しません。メールアドレスが正しく登録されているか確認してください。';
+        console.error('assignUserRole error:', error);
+        if (error.code === 'auth/user-not-found') {
+            throw new functions.https.HttpsError('not-found', `メールアドレス「${email}」のアカウントがFirebase Authに存在しません。`);
         }
-        throw new functions.https.HttpsError('invalid-argument', message);
+        throw new functions.https.HttpsError('failed-precondition', `権限設定に失敗しました: ${error.message}`);
     }
 });
-// ------------------------------------------------------------------
-// Temporary Seed Function (Call via HTTP to seed productMasters)
-// ------------------------------------------------------------------
+__exportStar(require("./csvImport"), exports);
 exports.seedProducts = functions.https.onRequest(async (req, res) => {
     const products = [
         {
@@ -116,5 +127,4 @@ exports.seedProducts = functions.https.onRequest(async (req, res) => {
         res.status(500).send(err.message);
     }
 });
-__exportStar(require("./csvImport"), exports);
 //# sourceMappingURL=index.js.map

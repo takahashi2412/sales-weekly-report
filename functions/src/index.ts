@@ -55,7 +55,7 @@ export const assignUserRole = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError('not-found',
         `メールアドレス「${email}」のアカウントがFirebase Authに存在しません。`);
     }
-    throw new functions.https.HttpsError('internal',
+    throw new functions.https.HttpsError('failed-precondition',
       `権限設定に失敗しました: ${error.message}`);
   }
 });
