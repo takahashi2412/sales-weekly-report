@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { BarChart3, Users, Table, ChevronRight, Activity } from 'lucide-react';
+import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { BarChart3, Users, Table, Activity } from 'lucide-react';
 import Breadcrumb from '../../components/Breadcrumb';
+import { useAuth } from '../../context/AuthContext';
+import { getVisibleUsers } from '../../utils/teamUtils';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line, ComposedChart
+} from 'recharts';
 
 const KPI_KEYS = ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'];
 const KPI_LABELS = {
@@ -19,12 +24,10 @@ const processHourlyData = (hourlyData) => {
   if (!hourlyData || !Array.isArray(hourlyData)) return [];
   
   return hourlyData.filter(h => {
-    // 19:00以降を除外
     if (h.hour === 'late' || (typeof h.hour === 'number' && h.hour >= 19)) return false;
     return true;
   }).reduce((acc, h) => {
     if (h.hour === 'early' || h.hour === 8) {
-      // 0:00〜8:59を8:00行にまとめる
       const existing = acc.find(a => a.hour === 8);
       if (existing) {
         Object.keys(h).forEach(k => {
@@ -42,91 +45,179 @@ const processHourlyData = (hourlyData) => {
 
 export default function KpiDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('table'); // table, compare, graph
+  
+  const [products, setProducts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedUser, setSelectedUser] = useState(user.uid);
+  const [selectedProduct, setSelectedProduct] = useState('');
+  const [selectedMetric, setSelectedMetric] = useState('total');
+
   const [kpiData, setKpiData] = useState(null);
-  const [teamData, setTeamData] = useState(null);
-  const [productName, setProductName] = useState('');
+  const [allTeamKpiData, setAllTeamKpiData] = useState([]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialMeta = async () => {
       try {
-        // Fetch User KPI
-        const kpiRef = doc(db, 'dailyKpi', id);
-        const kpiSnap = await getDoc(kpiRef);
+        const prodSnap = await getDocs(collection(db, 'productMasters'));
+        const pList = [];
+        prodSnap.forEach(d => { if (d.data().isActive !== false) pList.push(d.data()); });
+        setProducts(pList);
         
-        if (!kpiSnap.exists()) {
-          setLoading(false);
-          return;
-        }
-        
-        const data = kpiSnap.data();
-        data.displayHourly = processHourlyData(data.hourlyData);
-        setKpiData(data);
+        const visible = await getVisibleUsers(user);
+        setTeamMembers(visible);
 
-        // Fetch Product Name
-        const prodRef = doc(db, 'productMasters', data.productId);
-        const prodSnap = await getDoc(prodRef);
-        if (prodSnap.exists()) {
-          setProductName(prodSnap.data().productName);
+        if (id) {
+          const parts = id.split('_');
+          if (parts.length === 3) {
+            setSelectedUser(parts[0]);
+            setSelectedProduct(parts[1]);
+            const d = parts[2];
+            setSelectedDate(`${d.substring(0,4)}-${d.substring(4,6)}-${d.substring(6,8)}`);
+          } else {
+            setSelectedDate(new Date().toISOString().split('T')[0]);
+            if (pList.length > 0) setSelectedProduct(pList[0].productId);
+          }
         } else {
-          setProductName(data.productId);
+          setSelectedDate(new Date().toISOString().split('T')[0]);
+          if (pList.length > 0) setSelectedProduct(pList[0].productId);
         }
-
-        // Fetch Team Summary for Comparison
-        const summaryId = `${data.productId}_${data.date}`;
-        const sumRef = doc(db, 'dailyKpiSummary', summaryId);
-        const sumSnap = await getDoc(sumRef);
-        if (sumSnap.exists()) {
-          const sumData = sumSnap.data();
-          sumData.displayHourly = processHourlyData(sumData.hourlyData);
-          setTeamData(sumData);
-        }
-
       } catch (e) {
         console.error(e);
       } finally {
         setLoading(false);
       }
     };
-    if (id) fetchData();
-  }, [id]);
+    fetchInitialMeta();
+  }, [id, user]);
 
-  if (loading) {
+  useEffect(() => {
+    if (loading || !selectedDate || !selectedProduct) return;
+    
+    const fetchKpi = async () => {
+      setLoading(true);
+      try {
+        const formattedDate = selectedDate.replace(/-/g, '');
+        
+        const q = query(
+          collection(db, 'dailyKpi'),
+          where('userId', '==', selectedUser),
+          where('date', '==', formattedDate),
+          where('productId', '==', selectedProduct)
+        );
+        const snap = await getDocs(q);
+        
+        if (!snap.empty) {
+          const d = snap.docs[0].data();
+          d.displayHourly = processHourlyData(d.hourlyData);
+          setKpiData(d);
+        } else {
+          setKpiData(null);
+        }
+
+        if (user.role === 'executive' || user.role === 'manager') {
+          const tq = query(
+            collection(db, 'dailyKpi'), 
+            where('date', '==', formattedDate),
+            where('productId', '==', selectedProduct)
+          );
+          const tSnap = await getDocs(tq);
+          const allKpis = [];
+          tSnap.forEach(d => {
+            const dt = d.data();
+            if (teamMembers.find(m => m.id === dt.userId)) {
+              dt.displayHourly = processHourlyData(dt.hourlyData);
+              allKpis.push(dt);
+            }
+          });
+          setAllTeamKpiData(allKpis);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchKpi();
+  }, [selectedDate, selectedUser, selectedProduct, loading, teamMembers]);
+
+  if (loading && products.length === 0) {
     return <div style={{ padding: '3rem', textAlign: 'center' }}>読み込み中...</div>;
   }
 
-  if (!kpiData) {
-    return <div style={{ padding: '3rem', textAlign: 'center' }}>データが見つかりません。</div>;
-  }
-
   const formatHour = (hour) => `${hour}:00〜`;
-  const formatDate = (dateStr) => {
-    if (!dateStr || dateStr.length !== 8) return dateStr;
-    return `${dateStr.substring(0,4)}/${dateStr.substring(4,6)}/${dateStr.substring(6,8)}`;
+
+  const getGraphData = () => {
+    if (!kpiData) return [];
+    return kpiData.displayHourly.map(h => ({
+      name: `${h.hour}:00`,
+      架電数: h.total || 0,
+      有効通話率: (h.total || 0) > 0 ? Math.round(((h.actual || 0) / h.total) * 100) : 0
+    }));
   };
 
   return (
     <div className="page-container" style={{ padding: '2rem' }}>
       <Breadcrumb items={[
         { label: 'KPIダッシュボード', path: '/kpi' },
-        { label: 'KPI履歴・推移', path: '/kpi/history' },
         { label: '時間帯別KPI詳細 (K-06)' }
       ]} />
 
       <div className="page-header" style={{ marginBottom: '2rem', marginTop: '1rem' }}>
         <h1>時間帯別KPI詳細 (K-06)</h1>
-        <p style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', color: 'var(--text-secondary)' }}>
-          <span><strong>日付:</strong> {formatDate(kpiData.date)}</span>
-          <span><strong>商材:</strong> {productName}</span>
-        </p>
+        <p>個人の時間帯別データの確認とチーム比較</p>
+      </div>
+
+      {/* Filters */}
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontWeight: 'bold' }}>日付:</label>
+          <input 
+            type="date" 
+            value={selectedDate} 
+            onChange={e => setSelectedDate(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontWeight: 'bold' }}>商材:</label>
+          <select 
+            value={selectedProduct} 
+            onChange={e => setSelectedProduct(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          >
+            {products.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
+          </select>
+        </div>
+
+        {teamMembers.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ fontWeight: 'bold' }}>対象者:</label>
+            <select 
+              value={selectedUser} 
+              onChange={e => setSelectedUser(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+            >
+              {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
         {[
           { id: 'table', label: 'テーブル表示', icon: <Table size={16} /> },
-          { id: 'compare', label: 'チーム比較', icon: <Users size={16} /> },
+          ...(user.role === 'executive' || user.role === 'manager' || user.role === 'leader' 
+            ? [{ id: 'compare', label: 'チーム比較', icon: <Users size={16} /> }] : []),
           { id: 'graph', label: 'グラフ分析', icon: <BarChart3 size={16} /> }
         ].map(tab => (
           <button 
@@ -151,8 +242,14 @@ export default function KpiDetail() {
         ))}
       </div>
 
+      {!kpiData && activeTab !== 'compare' && (
+        <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          指定された条件のデータが見つかりません。
+        </div>
+      )}
+
       {/* Tab 1: Table */}
-      {activeTab === 'table' && (
+      {activeTab === 'table' && kpiData && (
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem' }}>個人の時間帯別データ</h3>
           <div className="table-container">
@@ -189,127 +286,86 @@ export default function KpiDetail() {
       {/* Tab 2: Compare */}
       {activeTab === 'compare' && (
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>チーム平均との比較</h3>
-          {!teamData ? (
-            <p style={{ color: 'var(--text-secondary)' }}>比較対象のチームデータがありません。</p>
-          ) : (
-            <div className="table-container">
-              <table className="reports-table">
-                <thead>
-                  <tr>
-                    <th>時間帯</th>
-                    <th>架電数 (個人)</th>
-                    <th>架電数 (チーム平均)</th>
-                    <th>差分</th>
-                    <th>アポ数 (個人)</th>
-                    <th>アポ数 (チーム平均)</th>
-                    <th>差分</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {kpiData.displayHourly.map((h, i) => {
-                    const teamH = teamData.displayHourly.find(th => th.hour === h.hour) || {};
-                    const memberCount = teamData.memberCount || 1;
-                    const teamAvgTotal = Math.round((teamH.total || 0) / memberCount * 10) / 10;
-                    const teamAvgAppoint = Math.round((teamH.appoint || 0) / memberCount * 10) / 10;
-                    
-                    const diffTotal = (h.total || 0) - teamAvgTotal;
-                    const diffAppoint = (h.appoint || 0) - teamAvgAppoint;
-
-                    return (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 'bold' }}>{formatHour(h.hour)}</td>
-                        <td>{h.total || 0}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{teamAvgTotal}</td>
-                        <td style={{ color: diffTotal > 0 ? '#10b981' : diffTotal < 0 ? '#ef4444' : 'inherit', fontWeight: 'bold' }}>
-                          {diffTotal > 0 ? '+' : ''}{Math.round(diffTotal * 10)/10}
-                        </td>
-                        <td>{h.appoint || 0}</td>
-                        <td style={{ color: 'var(--text-secondary)' }}>{teamAvgAppoint}</td>
-                        <td style={{ color: diffAppoint > 0 ? '#10b981' : diffAppoint < 0 ? '#ef4444' : 'inherit', fontWeight: 'bold' }}>
-                          {diffAppoint > 0 ? '+' : ''}{Math.round(diffAppoint * 10)/10}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {(user.role === 'leader' || user.role === 'member') ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              権限がありません。チーム比較はマネージャー以上のみ閲覧可能です。
             </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3>チームメンバー時間帯比較</h3>
+                <select 
+                  value={selectedMetric}
+                  onChange={e => setSelectedMetric(e.target.value)}
+                  style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                >
+                  {KPI_KEYS.map(k => <option key={k} value={k}>{KPI_LABELS[k]}</option>)}
+                </select>
+              </div>
+
+              {allTeamKpiData.length === 0 ? (
+                <p style={{ color: 'var(--text-secondary)' }}>比較対象のデータがありません。</p>
+              ) : (
+                <div className="table-container" style={{ overflowX: 'auto' }}>
+                  <table className="reports-table">
+                    <thead>
+                      <tr>
+                        <th style={{ minWidth: '120px' }}>メンバー名</th>
+                        {[8,9,10,11,12,13,14,15,16,17,18].map(h => (
+                          <th key={h}>{h}:00〜</th>
+                        ))}
+                        <th>合計</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamMembers.map(m => {
+                        const memberKpi = allTeamKpiData.find(d => d.userId === m.id);
+                        if (!memberKpi) return null;
+                        return (
+                          <tr key={m.id} style={{ background: m.id === selectedUser ? 'rgba(59,130,246,0.1)' : 'transparent' }}>
+                            <td style={{ fontWeight: 'bold' }}>{m.name}</td>
+                            {[8,9,10,11,12,13,14,15,16,17,18].map(h => {
+                              const hData = memberKpi.displayHourly.find(dh => dh.hour === h);
+                              return <td key={h}>{hData ? (hData[selectedMetric] || 0) : 0}</td>;
+                            })}
+                            <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
+                              {memberKpi.totals?.[selectedMetric] || 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {/* Tab 3: Graph */}
-      {activeTab === 'graph' && (
+      {activeTab === 'graph' && kpiData && (
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Activity size={20} /> 架電数とアポ数の推移
+            <Activity size={20} /> 時間帯別の架電数・有効通話率
           </h3>
           
-          <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '16px', height: '16px', background: 'var(--accent-primary)', borderRadius: '4px' }}></div>
-              <span>架電数</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{ width: '16px', height: '16px', background: '#10b981', borderRadius: '4px' }}></div>
-              <span>アポ数</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: '300px', gap: '1rem', padding: '1rem 0', borderBottom: '1px solid var(--border-color)' }}>
-            {kpiData.displayHourly.map((h, i) => {
-              const maxTotal = Math.max(...kpiData.displayHourly.map(d => d.total || 0), 10);
-              const maxAppoint = Math.max(...kpiData.displayHourly.map(d => d.appoint || 0), 5);
-              
-              const totalHeight = `${((h.total || 0) / maxTotal) * 100}%`;
-              // Scale appoint up a bit for visibility if it's very small compared to total, 
-              // but we want to show it on its own scale or just alongside. 
-              // Usually appoint is much smaller. Let's make it relative to maxAppoint.
-              const appointHeight = `${((h.appoint || 0) / maxAppoint) * 100}%`;
-
-              return (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', height: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', height: '100%', width: '100%', justifyContent: 'center' }}>
-                    <div 
-                      style={{ 
-                        width: '40%', 
-                        height: totalHeight, 
-                        background: 'var(--accent-primary)', 
-                        borderRadius: '4px 4px 0 0',
-                        transition: 'height 0.3s ease',
-                        position: 'relative'
-                      }}
-                      title={`架電数: ${h.total || 0}`}
-                    >
-                      <span style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.75rem' }}>
-                        {h.total || 0}
-                      </span>
-                    </div>
-                    <div 
-                      style={{ 
-                        width: '40%', 
-                        height: appointHeight, 
-                        background: '#10b981', 
-                        borderRadius: '4px 4px 0 0',
-                        transition: 'height 0.3s ease',
-                        position: 'relative'
-                      }}
-                      title={`アポ数: ${h.appoint || 0}`}
-                    >
-                      {(h.appoint || 0) > 0 && (
-                        <span style={{ position: 'absolute', top: '-20px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.75rem', color: '#10b981', fontWeight: 'bold' }}>
-                          {h.appoint}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                    {h.hour}:00
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ width: '100%', height: '400px' }}>
+            <ResponsiveContainer>
+              <ComposedChart data={getGraphData()} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="left" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)' }}
+                  itemStyle={{ color: 'var(--text-primary)' }}
+                />
+                <Legend />
+                <Bar yAxisId="left" dataKey="架電数" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                <Line yAxisId="right" type="monotone" dataKey="有効通話率" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}

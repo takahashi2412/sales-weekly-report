@@ -95,6 +95,15 @@ export default function Layout() {
             <span className="nav-label">KPI履歴・推移</span>
           </Link>
           <Link 
+            to="/kpi/compare" 
+            className={`nav-item ${location.pathname.startsWith('/kpi/compare') ? 'active' : ''}`}
+            title="KPI比較・着地予測 (K-05)"
+            onClick={closeMobileMenu}
+          >
+            <TrendingUp size={20} />
+            <span className="nav-label">KPI比較・着地予測</span>
+          </Link>
+          <Link 
             to="/kpi/input" 
             className={`nav-item ${location.pathname.startsWith('/kpi/input') ? 'active' : ''}`}
             title="日次KPI入力 (手動)"

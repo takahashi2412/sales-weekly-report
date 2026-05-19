@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
-import { Calendar, History, FileText, Database } from 'lucide-react';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { History, FileText, Database, Users } from 'lucide-react';
+import { getVisibleUsers } from '../../utils/teamUtils';
 import '../Dashboard.css';
 
 export default function KpiHistory() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState('all');
   const [kpiList, setKpiList] = useState([]);
 
   useEffect(() => {
@@ -22,11 +25,24 @@ export default function KpiHistory() {
         });
         setProducts(prodList);
 
-        // Fetch recent personal KPIs
-        const kpiQuery = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(30));
+        const visibleUsers = await getVisibleUsers(user);
+        setTeamMembers(visibleUsers);
+
+        // Fetch recent KPIs (all visible, up to 100 or so to avoid huge reads)
+        // Since we can't easily do `in` query for > 10, we fetch recent and filter in memory.
+        const kpiQuery = query(collection(db, 'dailyKpi'), orderBy('date', 'desc'), limit(500));
         const kpiSnap = await getDocs(kpiQuery);
         const kpis = [];
-        kpiSnap.forEach(d => kpis.push({ id: d.id, ...d.data() }));
+        const visibleIds = visibleUsers.map(u => u.id);
+        
+        kpiSnap.forEach(d => {
+          const data = d.data();
+          if (visibleIds.includes(data.userId)) {
+            const member = visibleUsers.find(u => u.id === data.userId);
+            kpis.push({ id: d.id, userName: member?.name || '不明', ...data });
+          }
+        });
+        
         setKpiList(kpis);
       } catch (e) {
         console.error(e);
@@ -52,6 +68,17 @@ export default function KpiHistory() {
     );
   };
 
+  const formatDate = (d) => {
+    if (!d) return '';
+    if (d.includes('-')) return d.replace(/-/g, '/');
+    if (d.length === 8) return `${d.substring(0, 4)}/${d.substring(4, 6)}/${d.substring(6, 8)}`;
+    return d;
+  };
+
+  const filteredKpiList = selectedUser === 'all' 
+    ? kpiList 
+    : kpiList.filter(k => k.userId === selectedUser);
+
   return (
     <div className="page-container" style={{ padding: '2rem' }}>
       <div className="page-header" style={{ marginBottom: '2rem' }}>
@@ -59,9 +86,24 @@ export default function KpiHistory() {
         <p>過去の日次KPIデータと入力ソースの確認</p>
       </div>
 
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Users size={18} style={{ color: 'var(--text-secondary)' }} />
+          <label style={{ fontWeight: 'bold' }}>メンバー:</label>
+          <select 
+            value={selectedUser} 
+            onChange={e => setSelectedUser(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          >
+            {teamMembers.length > 1 && <option value="all">全員</option>}
+            {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
         <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <History size={20} /> 個人の直近KPI履歴
+          <History size={20} /> 直近のKPI履歴
         </h2>
 
         {loading ? (
@@ -72,6 +114,7 @@ export default function KpiHistory() {
               <thead>
                 <tr>
                   <th>日付</th>
+                  <th>メンバー</th>
                   <th>入力ソース</th>
                   <th>対象商材</th>
                   <th>架電数</th>
@@ -83,16 +126,17 @@ export default function KpiHistory() {
                 </tr>
               </thead>
               <tbody>
-                {kpiList.length === 0 ? (
-                  <tr><td colSpan="9" style={{ textAlign: 'center' }}>KPI履歴がありません</td></tr>
+                {filteredKpiList.length === 0 ? (
+                  <tr><td colSpan="10" style={{ textAlign: 'center' }}>KPI履歴がありません</td></tr>
                 ) : (
-                  kpiList.map((k, i) => (
+                  filteredKpiList.map((k, i) => (
                     <tr key={i}>
                       <td style={{ fontWeight: 'bold' }}>
-                        <Link to={`/kpi/${k.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
-                          {k.date.substring(0, 4)}/{k.date.substring(4, 6)}/{k.date.substring(6, 8)}
+                        <Link to={`/kpi/detail/${k.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                          {formatDate(k.date)}
                         </Link>
                       </td>
+                      <td>{k.userName}</td>
                       <td><SourceBadge source={k.source} /></td>
                       <td>{products.find(p => p.productId === k.productId)?.productName || k.productId}</td>
                       <td>{k.totals?.total || 0}</td>

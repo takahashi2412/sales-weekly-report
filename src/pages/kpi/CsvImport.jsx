@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Upload, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const PRODUCTS = [
   { id: 'visit', name: 'HP（訪問）' },
@@ -10,6 +11,7 @@ const PRODUCTS = [
 ];
 
 export default function CsvImport() {
+  const { user } = useAuth();
   const [productId, setProductId] = useState('visit');
   const [file, setFile] = useState(null);
   const [previewData, setPreviewData] = useState(null);
@@ -83,9 +85,17 @@ export default function CsvImport() {
 
   return (
     <div className="csv-import page-container" style={{ padding: '2rem' }}>
-      <div className="page-header" style={{ marginBottom: '2rem' }}>
-        <h1>実績CSV取込 (K-07)</h1>
-        <p>基幹システムから出力した時間別KPI（CP932形式）をアップロードします</p>
+      <div className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1>実績CSV取込 (K-07)</h1>
+          <p>基幹システムから出力した時間別KPI（CP932形式）をアップロードします</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-secondary)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+          <ShieldCheck size={16} style={{ color: 'var(--accent-primary)' }} />
+          <span style={{ fontSize: '0.9rem' }}>
+            操作者: <strong>{user?.name}</strong> ({user?.role})
+          </span>
+        </div>
       </div>
 
       {errorMsg && (

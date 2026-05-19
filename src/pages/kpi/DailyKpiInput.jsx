@@ -4,6 +4,8 @@ import { doc, setDoc, getDocs, collection } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Save, Clock, FileText } from 'lucide-react';
 
+import { getVisibleUsers } from '../../utils/teamUtils';
+
 const KPI_KEYS = [
   { key: 'total', label: '架電数' },
   { key: 'actual', label: '有効通話' },
@@ -28,12 +30,14 @@ export default function DailyKpiInput() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
   
   const [date, setDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
   const [productId, setProductId] = useState('');
+  const [targetUserId, setTargetUserId] = useState(user.uid);
   const [mode, setMode] = useState('summary'); // 'summary' | 'detail'
 
   const [summaryData, setSummaryData] = useState({
@@ -49,7 +53,7 @@ export default function DailyKpiInput() {
   });
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const fetchInitialMeta = async () => {
       const snap = await getDocs(collection(db, 'productMasters'));
       const list = [];
       snap.forEach(d => {
@@ -63,8 +67,11 @@ export default function DailyKpiInput() {
       } else if (list.length > 0) {
         setProductId(list[0].productId);
       }
+
+      const visible = await getVisibleUsers(user);
+      setTeamMembers(visible);
     };
-    fetchProducts();
+    fetchInitialMeta();
   }, [user]);
 
   const handleSummaryChange = (key, val) => {
@@ -82,8 +89,8 @@ export default function DailyKpiInput() {
   };
 
   const handleSave = async () => {
-    if (!productId || !date) {
-      alert('日付と商材を選択してください。');
+    if (!productId || !date || !targetUserId) {
+      alert('必須項目を選択してください。');
       return;
     }
 
@@ -93,12 +100,11 @@ export default function DailyKpiInput() {
       let totalsToSave = { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
 
       if (mode === 'summary') {
-        // Distribute summary across 9 to 20
         const hourCount = 12;
         const perHour = {};
         for (const k of KPI_KEYS.map(k => k.key)) {
           perHour[k] = Math.floor(summaryData[k] / hourCount);
-          totalsToSave[k] = summaryData[k]; // Ensure total matches input
+          totalsToSave[k] = summaryData[k]; 
         }
 
         hourlyDataToSave = HOUR_LABELS.map(h => {
@@ -108,7 +114,6 @@ export default function DailyKpiInput() {
           return { hour: h, ...perHour };
         });
       } else {
-        // Detail mode
         hourlyDataToSave = HOUR_LABELS.map(h => ({
           hour: h,
           ...detailData[h]
@@ -119,10 +124,10 @@ export default function DailyKpiInput() {
         }
       }
 
-      const docId = `${user.uid}_${productId}_${date.replace(/-/g, '')}`;
+      const docId = `${targetUserId}_${productId}_${date.replace(/-/g, '')}`;
       await setDoc(doc(db, 'dailyKpi', docId), {
-        userId: user.uid,
-        date: date.replace(/-/g, ''), // Save as YYYYMMDD to match CSV convention
+        userId: targetUserId,
+        date: date.replace(/-/g, ''), 
         productId,
         productVersion: 1,
         source: 'manual',
@@ -150,6 +155,20 @@ export default function DailyKpiInput() {
 
       <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+          
+          {(user.role === 'executive' || user.role === 'manager') && teamMembers.length > 0 && (
+            <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+              <label style={{ fontWeight: 'bold' }}>対象メンバー</label>
+              <select 
+                value={targetUserId} 
+                onChange={e => setTargetUserId(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              >
+                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
             <label style={{ fontWeight: 'bold' }}>対象日</label>
             <input 
