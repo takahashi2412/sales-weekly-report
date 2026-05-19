@@ -21,6 +21,7 @@ import DailyKpiInput from './pages/kpi/DailyKpiInput';
 import KgiSetting from './pages/kpi/KgiSetting';
 import KpiDashboard from './pages/kpi/KpiDashboard';
 import KpiHistory from './pages/kpi/KpiHistory';
+import KpiDetail from './pages/kpi/KpiDetail';
 
 import DailyDashboard from './pages/daily/DailyDashboard';
 import DailyInput from './pages/daily/DailyInput';
@@ -133,6 +134,7 @@ function AppRoutes() {
           <Route path="kpi/history" element={<KpiHistory />} />
           <Route path="kpi/input" element={<DailyKpiInput />} />
           <Route path="kpi/setting" element={<KgiSetting />} />
+          <Route path="kpi/:id" element={<KpiDetail />} />
 
           <Route path="daily" element={<DailyDashboard />} />
           <Route path="daily/new" element={<DailyInput />} />

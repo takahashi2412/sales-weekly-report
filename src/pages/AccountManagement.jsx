@@ -140,7 +140,9 @@ export default function AccountManagement() {
         // 権限も更新する場合は Cloud Functions を呼ぶ
         const functions = getFunctions();
         const assignRole = httpsCallable(functions, 'assignUserRole');
-        await assignRole({ uid: editingUserId, role: formData.role, title: formData.title });
+        const targetUser = accounts.find(a => a.id === editingUserId);
+        const authUid = targetUser?.uid || editingUserId;
+        await assignRole({ uid: authUid, role: formData.role, title: formData.title });
 
         alert(`メンバー情報（${formData.name}）を更新しました！\n※メールアドレス・パスワードの変更はここではできません。`);
         cancelEdit();
@@ -155,6 +157,7 @@ export default function AccountManagement() {
 
         // 3. Save profile data to Firestore 'users' collection using the primary app's db
         await setDoc(doc(db, 'users', newUserId), {
+          uid: newUserId,
           email: formData.email,
           name: formData.name,
           teamId: formData.teamId,

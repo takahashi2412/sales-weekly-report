@@ -54,7 +54,8 @@ exports.parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
     const KPI_KEYS = ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'];
     // 8. メンバー名→userIdの名寄せ準備
     const usersSnap = await admin.firestore().collection('users').get();
-    const usersByName = new Map(usersSnap.docs.map(d => [d.data().name, d.data()]));
+    const normalize = (n) => (n || '').replace(/[\s　]/g, '');
+    const usersByName = new Map(usersSnap.docs.map(d => [normalize(d.data().name), Object.assign({ id: d.id }, d.data())]));
     // 9. データ行をパース（3行目〜最終行の1つ前）
     const dataRows = records.slice(2, -1);
     const summaryRow = records[records.length - 1]; // 「合計」行
@@ -63,8 +64,9 @@ exports.parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
         const name = (_a = row[0]) === null || _a === void 0 ? void 0 : _a.trim();
         if (!name || name === '合計')
             continue;
-        const userData = usersByName.get(name);
-        const userId = (userData === null || userData === void 0 ? void 0 : userData.uid) || null;
+        const normalizedName = normalize(name);
+        const userData = usersByName.get(normalizedName);
+        const userId = (userData === null || userData === void 0 ? void 0 : userData.id) || null;
         // 14時間帯×6項目をパース
         const hourlyData = [];
         let col = 1;

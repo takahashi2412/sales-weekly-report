@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
@@ -88,7 +89,9 @@ export default function KpiHistory() {
                   kpiList.map((k, i) => (
                     <tr key={i}>
                       <td style={{ fontWeight: 'bold' }}>
-                        {k.date.substring(0, 4)}/{k.date.substring(4, 6)}/{k.date.substring(6, 8)}
+                        <Link to={`/kpi/${k.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                          {k.date.substring(0, 4)}/{k.date.substring(4, 6)}/{k.date.substring(6, 8)}
+                        </Link>
                       </td>
                       <td><SourceBadge source={k.source} /></td>
                       <td>{products.find(p => p.productId === k.productId)?.productName || k.productId}</td>

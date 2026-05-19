@@ -1,42 +1,74 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.seedProducts = exports.assignUserRole = void 0;
+exports.seedProducts = exports.debugAssign = exports.assignUserRole = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
 exports.assignUserRole = functions.https.onCall(async (data, context) => {
-    if (!context.auth || context.auth.token.role !== 'executive') {
-        throw new functions.https.HttpsError('permission-denied', 'Only executive can assign roles.');
+    try {
+        if (!context.auth || context.auth.token.role !== 'executive') {
+            throw new functions.https.HttpsError('permission-denied', 'Only executive can assign roles.');
+        }
+        const { uid, role, title } = data;
+        if (!['executive', 'manager', 'leader'].includes(role)) {
+            throw new functions.https.HttpsError('invalid-argument', 'Invalid role.');
+        }
+        try {
+            await admin.auth().getUser(uid); // 存在確認
+        }
+        catch (e) {
+            throw new functions.https.HttpsError('not-found', '対象のアカウントがFirebase Authに存在しません: ' + uid);
+        }
+        // Set custom user claims using the correct Auth UID
+        await admin.auth().setCustomUserClaims(uid, { role });
+        // Sync role to users collection using the original document ID
+        const updateData = {
+            role,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        if (title !== undefined) {
+            updateData.title = title;
+        }
+        await admin.firestore().collection('users').doc(uid).update(updateData);
+        return { success: true };
     }
-    const { uid, role, title } = data;
-    if (!['executive', 'manager', 'leader'].includes(role)) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid role.');
+    catch (error) {
+        console.error("Error in assignUserRole:", error);
+        // Convert common Firebase Auth errors to readable messages
+        let message = error.message || String(error);
+        if (error.code === 'auth/user-not-found' || message.includes('user record')) {
+            message = '対象のアカウントがFirebase Authに存在しません。メールアドレスが正しく登録されているか確認してください。';
+        }
+        // Always use invalid-argument so the client UI sees the true message
+        throw new functions.https.HttpsError('invalid-argument', message);
     }
-    // Set custom user claims
-    await admin.auth().setCustomUserClaims(uid, { role });
-    // Sync role to users collection
-    await admin.firestore().collection('users').doc(uid).update({
-        role,
-        title,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    return { success: true };
 });
-__exportStar(require("./csvImport"), exports);
+exports.debugAssign = functions.https.onRequest(async (req, res) => {
+    var _a;
+    try {
+        const uid = req.query.uid;
+        if (!uid) {
+            res.send("No uid provided. Use ?uid=xxx");
+            return;
+        }
+        const userDoc = await admin.firestore().collection('users').doc(uid).get();
+        if (!userDoc.exists) {
+            res.send(`User doc ${uid} not found`);
+            return;
+        }
+        const email = (_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.email;
+        if (!email) {
+            res.send(`User doc ${uid} has no email`);
+            return;
+        }
+        const authUser = await admin.auth().getUserByEmail(email);
+        await admin.auth().setCustomUserClaims(authUser.uid, { role: 'manager' });
+        res.send(`Success! Auth UID: ${authUser.uid}, Email: ${email}`);
+    }
+    catch (e) {
+        res.send(`ERROR: ${e.message}\nSTACK: ${e.stack}`);
+    }
+});
 // ------------------------------------------------------------------
 // Temporary Seed Function (Call via HTTP to seed productMasters)
 // ------------------------------------------------------------------
