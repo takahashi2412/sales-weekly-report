@@ -138,7 +138,7 @@ export default function CsvImport() {
               </label>
             </div>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-              ファイル名形式：時間別_&#123;productId&#125;_YYYYMMDD_YYYYMMDD.csv
+              ファイル名形式：時間別_&#123;productId&#125;_YYYYMMDD.csv
             </p>
           </div>
 

@@ -23,23 +23,19 @@ exports.parseHourlyKpiCsv = functions.https.onCall(async (data, context) => {
     }
     const { fileBuffer, fileName } = data; // fileBufferはBase64
     // 2. ファイル名から商材IDと日付を抽出
-    // 例: "時間別_visit_20260518.csv" または "時間別_visit_20260518_20260518.csv"
-    const matchNew = fileName.match(/時間別_([a-z]+)_(\d{4})(\d{2})(\d{2})\.csv/);
-    const matchOld = fileName.match(/時間別_([a-z]+)_(\d{4})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})\.csv/);
-    let productId, sy, sm, sd;
-    if (matchNew) {
-        [, productId, sy, sm, sd] = matchNew;
+    // 例: "時間別_visit_20260518_20260518.csv"
+    const match = fileName.match(/時間別_([a-z]+)_(\d{4})(\d{2})(\d{2})_(\d{4})(\d{2})(\d{2})\.csv/);
+    if (!match) {
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid filename. Expected: 時間別_{productId}_YYYYMMDD_YYYYMMDD.csv');
     }
-    else if (matchOld) {
-        [, productId, sy, sm, sd] = matchOld;
-    }
-    else {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid filename. Expected: 時間別_{productId}_YYYYMMDD.csv');
-    }
+    const [, productId, sy, sm, sd, ey, em, ed] = match;
     if (!PRODUCT_IDS.includes(productId)) {
         throw new functions.https.HttpsError('invalid-argument', `Invalid productId in filename: ${productId}`);
     }
     const targetDate = `${sy}-${sm}-${sd}`;
+    if (targetDate !== `${ey}-${em}-${ed}`) {
+        throw new functions.https.HttpsError('invalid-argument', 'Multi-day CSV is not supported. Start and end date must match.');
+    }
     // 3. productMasters の存在確認
     const productDoc = await admin.firestore()
         .collection('productMasters').doc(productId).get();

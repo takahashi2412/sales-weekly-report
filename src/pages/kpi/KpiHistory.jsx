@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { History, FileText, Database, Users } from 'lucide-react';
+import { History, FileText, Database, Users, Download } from 'lucide-react';
 import { getVisibleUsers } from '../../utils/teamUtils';
+import CsvExportModal from '../../components/CsvExportModal';
 import '../Dashboard.css';
 
 export default function KpiHistory() {
@@ -14,6 +15,7 @@ export default function KpiHistory() {
   const [teamMembers, setTeamMembers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('all');
   const [kpiList, setKpiList] = useState([]);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -86,7 +88,7 @@ export default function KpiHistory() {
         <p>過去の日次KPIデータと入力ソースの確認</p>
       </div>
 
-      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Users size={18} style={{ color: 'var(--text-secondary)' }} />
           <label style={{ fontWeight: 'bold' }}>メンバー:</label>
@@ -99,6 +101,14 @@ export default function KpiHistory() {
             {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
+        
+        <button 
+          className="btn btn-primary" 
+          onClick={() => setIsExportModalOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <Download size={18} /> CSV出力
+        </button>
       </div>
 
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
@@ -153,6 +163,12 @@ export default function KpiHistory() {
           </div>
         )}
       </div>
+
+      <CsvExportModal 
+        isOpen={isExportModalOpen} 
+        onClose={() => setIsExportModalOpen(false)} 
+        usersData={teamMembers}
+      />
     </div>
   );
 }
