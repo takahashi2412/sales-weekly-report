@@ -4,6 +4,14 @@ import Encoding from 'encoding-japanese';
 
 const HOUR_LABELS = ['early', 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 'late'];
 const KPI_KEYS = ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'];
+const ITEM_LABELS = {
+  total: '総',
+  actual: '実',
+  recall: '再',
+  owner: 'オ',
+  prospect: '見',
+  appoint: 'ア'
+};
 
 function downloadCsv(content, fileName) {
   const unicodeList = [];
@@ -32,7 +40,7 @@ function getHourLabel(hour) {
 }
 
 function generateHourlyCsv(records, usersMap) {
-  const header = ['日付', '名前', ...HOUR_LABELS.flatMap(h => KPI_KEYS.map(k => `${getHourLabel(h)}_${k}`))];
+  const header = ['日付', '名前', ...HOUR_LABELS.flatMap(h => KPI_KEYS.map(k => `${getHourLabel(h)}_${ITEM_LABELS[k]}`))];
   const rows = [header];
   
   for (const r of records) {
@@ -53,7 +61,7 @@ function generateHourlyCsv(records, usersMap) {
 }
 
 function generateDailyCsv(records, usersMap) {
-  const header = ['日付', '名前', ...KPI_KEYS];
+  const header = ['日付', '名前', ...KPI_KEYS.map(k => ITEM_LABELS[k])];
   const rows = [header];
   
   for (const r of records) {
@@ -67,7 +75,7 @@ function generateDailyCsv(records, usersMap) {
 }
 
 function generateMonthlyCsv(records, usersMap) {
-  const header = ['月', '名前', ...KPI_KEYS];
+  const header = ['月', '名前', ...KPI_KEYS.map(k => ITEM_LABELS[k])];
   const rows = [header];
   
   const agg = {};
