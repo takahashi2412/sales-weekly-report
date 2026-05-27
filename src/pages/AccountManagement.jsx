@@ -75,11 +75,11 @@ export default function AccountManagement() {
   const handleEdit = (user) => {
     setEditingUserId(user.id);
     setFormData({
-      email: user.email,
+      email: user.email || '',
       password: '', // Leave empty for edit
-      name: user.name,
+      name: user.name || '',
       teamId: user.teamId || '',
-      title: user.title,
+      title: user.title || '一般',
       role: user.role || 'leader',
       currentProductId: user.currentProductId || ''
     });
@@ -119,11 +119,11 @@ export default function AccountManagement() {
 
         // --- UPDATE EXISTING USER PROFILE ---
         await updateDoc(doc(db, 'users', editingUserId), {
-          name: formData.name,
-          teamId: formData.teamId,
+          name: formData.name || '',
+          teamId: formData.teamId || '',
           branch: selectedTeam ? selectedTeam.name : '未設定',
-          title: formData.title,
-          currentProductId: formData.currentProductId
+          title: formData.title || '一般',
+          currentProductId: formData.currentProductId || ''
         });
 
         // 担当商材が変更された場合は履歴に記録
@@ -182,12 +182,12 @@ export default function AccountManagement() {
         await setDoc(doc(db, 'users', newUserId), {
           uid: newUserId,
           email: formData.email,
-          name: formData.name,
-          teamId: formData.teamId,
+          name: formData.name || '',
+          teamId: formData.teamId || '',
           branch: selectedTeam ? selectedTeam.name : '未設定', // backward compat
-          title: formData.title,
-          currentProductId: formData.currentProductId,
-          role: formData.role, // Functions側でも上書きされるが初期表示用に設定
+          title: formData.title || '一般',
+          currentProductId: formData.currentProductId || '',
+          role: formData.role || 'leader', // Functions側でも上書きされるが初期表示用に設定
           createdAt: Date.now()
         });
 
