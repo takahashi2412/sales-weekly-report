@@ -96,8 +96,8 @@ export default function Layout() {
             <span className="nav-label">KPI履歴・推移</span>
           </Link>
           <Link 
-            to="/kpi/compare" 
-            className={`nav-item ${location.pathname.startsWith('/kpi/compare') ? 'active' : ''}`}
+            to="/kpi/analysis" 
+            className={`nav-item ${location.pathname.startsWith('/kpi/analysis') ? 'active' : ''}`}
             title="KPI比較・着地予測 (K-05)"
             onClick={closeMobileMenu}
           >
