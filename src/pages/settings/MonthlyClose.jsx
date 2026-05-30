@@ -68,8 +68,6 @@ export default function MonthlyClose() {
         const end = `${formData.period}-31`;
         const q = query(
           collection(db, 'orders'),
-          where('userId', '==', formData.userId),
-          where('productId', '==', formData.productId),
           where('orderDate', '>=', start),
           where('orderDate', '<=', end)
         );
@@ -77,8 +75,11 @@ export default function MonthlyClose() {
         let grossProfit = 0;
         let orders = 0;
         snap.forEach(d => {
-          grossProfit += (Number(d.data().grossProfitPoint) || 0);
-          orders++;
+          const data = d.data();
+          if (data.userId === formData.userId && data.productId === formData.productId) {
+            grossProfit += (Number(data.grossProfitPoint) || 0);
+            orders++;
+          }
         });
         setProvisionalData({ grossProfit, orders });
       } catch (e) {

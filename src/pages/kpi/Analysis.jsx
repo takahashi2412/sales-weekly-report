@@ -95,7 +95,6 @@ export default function Analysis() {
         } else {
           qRecent = query(
             collection(db, 'dailyKpi'),
-            where('productId', '==', selectedProduct),
             where('date', '>=', startStr),
             where('date', '<=', endStr)
           );
@@ -112,6 +111,8 @@ export default function Analysis() {
           if (user.role === 'leader') {
             if (data.productId !== selectedProduct) return;
             if (data.date < startStr || data.date > endStr) return;
+          } else {
+            if (data.productId !== selectedProduct) return;
           }
           
           if (aggRecent[data.userId]) {
@@ -135,7 +136,6 @@ export default function Analysis() {
         } else {
           qMonth = query(
             collection(db, 'orders'),
-            where('productId', '==', selectedProduct),
             where('orderDate', '>=', startMonthStr),
             where('orderDate', '<=', endMonthStr)
           );
@@ -178,6 +178,8 @@ export default function Analysis() {
           if (user.role === 'leader') {
             if (data.productId !== selectedProduct) return;
             if (data.orderDate < startMonthStr || data.orderDate > endMonthStr) return;
+          } else {
+            if (data.productId !== selectedProduct) return;
           }
           
           if (aggMonth[data.userId]) {
