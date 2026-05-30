@@ -11,6 +11,8 @@ export default function MonthlyClose() {
   const [loading, setLoading] = useState(false);
   const [pastData, setPastData] = useState([]);
   const [leaders, setLeaders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [provisionalData, setProvisionalData] = useState({ grossProfit: 0, orders: 0 });
   
   const [formData, setFormData] = useState({
     period: (() => {
@@ -19,6 +21,7 @@ export default function MonthlyClose() {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     })(),
     userId: '',
+    productId: '',
     confirmedGrossProfit: '',
     confirmedOrders: '',
     monthlyRoi: ''
@@ -27,28 +30,63 @@ export default function MonthlyClose() {
   const [filterPeriod, setFilterPeriod] = useState(formData.period);
 
   useEffect(() => {
-    const fetchLeaders = async () => {
+    const fetchLeadersAndProducts = async () => {
       try {
-        // 暫定対応：フィルターを外して全ユーザーを取得し、コンソールにログを出力する
         const uSnap = await getDocs(collection(db, 'users'));
-        console.log('取得件数:', uSnap.size);
-        
         const lList = [];
         uSnap.forEach(d => {
-          console.log(d.id, d.data());
           lList.push({ id: d.id, ...d.data() });
         });
-        
         setLeaders(lList);
-        if (lList.length > 0) {
-          setFormData(prev => ({ ...prev, userId: lList[0].id }));
+
+        const pSnap = await getDocs(collection(db, 'productMasters'));
+        const pList = [];
+        pSnap.forEach(d => {
+          if (d.data().isActive !== false) pList.push(d.data());
+        });
+        setProducts(pList);
+
+        if (lList.length > 0 || pList.length > 0) {
+          setFormData(prev => ({ 
+            ...prev, 
+            userId: lList.length > 0 ? lList[0].id : prev.userId,
+            productId: pList.length > 0 ? pList[0].productId : prev.productId
+          }));
         }
       } catch (e) {
         console.error(e);
       }
     };
-    fetchLeaders();
+    fetchLeadersAndProducts();
   }, []);
+
+  useEffect(() => {
+    const fetchProvisional = async () => {
+      if (!formData.period || !formData.userId || !formData.productId) return;
+      try {
+        const start = `${formData.period}-01`;
+        const end = `${formData.period}-31`;
+        const q = query(
+          collection(db, 'orders'),
+          where('userId', '==', formData.userId),
+          where('productId', '==', formData.productId),
+          where('orderDate', '>=', start),
+          where('orderDate', '<=', end)
+        );
+        const snap = await getDocs(q);
+        let grossProfit = 0;
+        let orders = 0;
+        snap.forEach(d => {
+          grossProfit += (Number(d.data().grossProfitPoint) || 0);
+          orders++;
+        });
+        setProvisionalData({ grossProfit, orders });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchProvisional();
+  }, [formData.period, formData.userId, formData.productId]);
 
   const fetchPastData = async () => {
     try {
@@ -72,7 +110,7 @@ export default function MonthlyClose() {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: (name === 'period' || name === 'userId') ? value : (value === '' ? '' : Number(value))
+      [name]: (name === 'period' || name === 'userId' || name === 'productId') ? value : (value === '' ? '' : Number(value))
     }));
   };
 
@@ -121,9 +159,10 @@ export default function MonthlyClose() {
     
     setLoading(true);
     try {
-      const docId = `${formData.period}_${formData.userId}`;
+      const docId = `${formData.period}_${formData.userId}_${formData.productId}`;
       const dataToSave = {
         userId: formData.userId,
+        productId: formData.productId,
         period: formData.period,
         confirmedGrossProfit: formData.confirmedGrossProfit,
         confirmedOrders: formData.confirmedOrders,
@@ -238,6 +277,31 @@ export default function MonthlyClose() {
                 ))}
               </select>
             </div>
+            <div className="form-group">
+              <label style={{ fontWeight: 'bold' }}>商材選択</label>
+              <select 
+                name="productId"
+                value={formData.productId}
+                onChange={handleChange}
+                required
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              >
+                {products.map(p => (
+                  <option key={p.productId} value={p.productId}>{p.productName}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '4px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>暫定粗利 (P)</span>
+                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{provisionalData.grossProfit.toLocaleString()} P</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>暫定件数 (件)</span>
+                <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{provisionalData.orders.toLocaleString()} 件</span>
+              </div>
+            </div>
             
             <div className="form-group">
               <label style={{ fontWeight: 'bold' }}>確定粗利 (P)</label>
@@ -316,6 +380,7 @@ export default function MonthlyClose() {
               <tr>
                 <th>メンバー名</th>
                 <th>対象月</th>
+                <th>商材</th>
                 <th>確定粗利</th>
                 <th>確定件数</th>
                 <th>ROI実績</th>
@@ -331,6 +396,7 @@ export default function MonthlyClose() {
                   <tr key={d.id}>
                     <td style={{ fontWeight: 'bold' }}>{getUserDisplayName(d.userId)}</td>
                     <td>{d.period}</td>
+                    <td>{products.find(p => p.productId === d.productId)?.productName || d.productId || '-'}</td>
                     <td>{Number(d.confirmedGrossProfit).toLocaleString()} P</td>
                     <td>{Number(d.confirmedOrders).toLocaleString()} 件</td>
                     <td>{d.monthlyRoi} 倍</td>

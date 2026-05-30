@@ -22,19 +22,18 @@ export default function KpiDashboard() {
 
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split('T')[0];
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
   });
   
   const [endDate, setEndDate] = useState(() => {
     const d = new Date();
-    return d.toISOString().split('T')[0];
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
   });
   
   const [errorMsg, setErrorMsg] = useState('');
 
   const [dashboardData, setDashboardData] = useState([]);
-  const [kgiTargets, setKgiTargets] = useState({ order: 0, adopt: 0, visit: 0 });
+  const [kgiTargets, setKgiTargets] = useState({ order: 0, adopt: 0, visit: 0, grossProfit: 0 });
 
   const fetchData = async () => {
     const sDateObj = new Date(startDate);
@@ -80,7 +79,7 @@ export default function KpiDashboard() {
       const targetMonthStr = `${eDateObj.getFullYear()}-${String(eDateObj.getMonth() + 1).padStart(2, '0')}`;
       const targetsQ = query(collection(db, 'kpiTargets'), where('targetMonth', '==', targetMonthStr));
       const tSnap = await getDocs(targetsQ);
-      let kgiAgg = { order: 0, adopt: 0, visit: 0 };
+      let kgiAgg = { order: 0, adopt: 0, visit: 0, grossProfit: 0 };
       tSnap.forEach(d => {
         const t = d.data();
         if ((t.status === 'approved' || t.status === 'pending') && visibleIds.includes(t.userId)) {
@@ -88,6 +87,7 @@ export default function KpiDashboard() {
             kgiAgg.order += (t.monthlyOrderTarget || 0);
             kgiAgg.adopt += (t.calculatedTargets?.requiredAdoptions || 0);
             kgiAgg.visit += (t.calculatedTargets?.requiredAppoints || 0); // visit = requiredAppoints in our mapping
+            kgiAgg.grossProfit += (t.grossProfitTarget || 0);
           }
         }
       });
@@ -140,6 +140,40 @@ export default function KpiDashboard() {
           aggSum.visit += (dSum.visit || 0);
           aggSum.order += (dSum.order || 0);
           aggSum.workHours += (dSum.workHours || 0);
+          if (typeof aggSum.grossProfit === 'undefined') aggSum.grossProfit = 0;
+        }
+      });
+
+      // 3. Fetch orders for gross profit
+      let ordersQuery;
+      if (user.role === 'leader' && viewScope === 'personal') {
+        ordersQuery = query(collection(db, 'orders'), where('userId', '==', user.uid));
+      } else {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('orderDate', '>=', startDate),
+          where('orderDate', '<=', endDate)
+        );
+      }
+      const ordersSnap = await getDocs(ordersQuery);
+      
+      ordersSnap.forEach(d => {
+        const data = d.data();
+        if (user.role === 'leader' && viewScope === 'personal' && (data.orderDate < startDate || data.orderDate > endDate)) {
+          return;
+        }
+        if (visibleIds.includes(data.userId)) {
+          const key = `${data.orderDate}_${data.productId}`;
+          if (!aggregated[key]) {
+            aggregated[key] = {
+              date: data.orderDate,
+              productId: data.productId,
+              totals: { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 },
+              dailySummary: { adopt: 0, visit: 0, order: 0, workHours: 0, grossProfit: 0 }
+            };
+          }
+          if (typeof aggregated[key].dailySummary.grossProfit === 'undefined') aggregated[key].dailySummary.grossProfit = 0;
+          aggregated[key].dailySummary.grossProfit += (Number(data.grossProfitPoint) || 0);
         }
       });
 
@@ -169,13 +203,13 @@ export default function KpiDashboard() {
   const aggregateTotals = () => {
     const agg = { 
       total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0,
-      adopt: 0, visit: 0, order: 0, workHours: 0
+      adopt: 0, visit: 0, order: 0, workHours: 0, grossProfit: 0
     };
     filteredSummaries.forEach(s => {
       ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'].forEach(k => {
         agg[k] += s.totals[k] || 0;
       });
-      ['adopt', 'visit', 'order', 'workHours'].forEach(k => {
+      ['adopt', 'visit', 'order', 'workHours', 'grossProfit'].forEach(k => {
         agg[k] += s.dailySummary[k] || 0;
       });
     });
@@ -197,6 +231,41 @@ export default function KpiDashboard() {
   const orderProgress = calcProgress(totals.order, kgiTargets.order);
   const adoptProgress = calcProgress(totals.adopt, kgiTargets.adopt);
   const visitProgress = calcProgress(totals.visit, kgiTargets.visit);
+  const grossProfitProgress = calcProgress(totals.grossProfit, kgiTargets.grossProfit);
+
+  const applyDatePreset = (preset) => {
+    const d = new Date();
+    let s, e;
+    switch (preset) {
+      case 'thisMonth':
+        s = new Date(d.getFullYear(), d.getMonth(), 1);
+        e = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        break;
+      case 'lastMonth':
+        s = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+        e = new Date(d.getFullYear(), d.getMonth(), 0);
+        break;
+      case 'thisWeek':
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        s = new Date(d.setDate(diff));
+        e = new Date(s);
+        e.setDate(s.getDate() + 6);
+        break;
+      case 'lastWeek':
+        const lw = new Date();
+        const lwDay = lw.getDay();
+        const lwDiff = lw.getDate() - lwDay + (lwDay === 0 ? -6 : 1) - 7;
+        s = new Date(lw.setDate(lwDiff));
+        e = new Date(s);
+        e.setDate(s.getDate() + 6);
+        break;
+      default:
+        return;
+    }
+    setStartDate(s.toISOString().split('T')[0]);
+    setEndDate(e.toISOString().split('T')[0]);
+  };
 
   return (
     <div className="page-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
@@ -213,6 +282,13 @@ export default function KpiDashboard() {
       )}
 
       <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', width: '100%' }}>
+          <label style={{ fontWeight: 'bold' }}>期間プリセット:</label>
+          <button onClick={() => applyDatePreset('thisMonth')} className="btn btn-secondary btn-sm" style={{ padding: '0.3rem 0.8rem' }}>当月</button>
+          <button onClick={() => applyDatePreset('lastMonth')} className="btn btn-secondary btn-sm" style={{ padding: '0.3rem 0.8rem' }}>先月</button>
+          <button onClick={() => applyDatePreset('thisWeek')} className="btn btn-secondary btn-sm" style={{ padding: '0.3rem 0.8rem' }}>今週</button>
+          <button onClick={() => applyDatePreset('lastWeek')} className="btn btn-secondary btn-sm" style={{ padding: '0.3rem 0.8rem' }}>先週</button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <label style={{ fontWeight: 'bold' }}>表示範囲:</label>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -287,7 +363,7 @@ export default function KpiDashboard() {
                   <div className="stat-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
                       <Briefcase size={20} style={{ color: '#10b981' }} />
-                      <h3>受注P（暫定）</h3>
+                      <h3>受注（件）</h3>
                     </div>
                   </div>
                   <div className="stat-value" style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '1rem', color: '#10b981' }}>
@@ -325,6 +401,21 @@ export default function KpiDashboard() {
                   </div>
                   <div style={{ width: '100%', height: '8px', background: 'var(--bg-primary)', borderRadius: '4px', marginTop: '1rem', overflow: 'hidden' }}>
                     <div style={{ width: `${visitProgress}%`, height: '100%', background: '#f59e0b' }} />
+                  </div>
+                </div>
+
+                <div className="stat-card glass-panel" style={{ padding: '1.5rem', borderLeft: '4px solid #8b5cf6' }}>
+                  <div className="stat-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
+                      <TrendingUp size={20} style={{ color: '#8b5cf6' }} />
+                      <h3>粗利 (P)</h3>
+                    </div>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '1rem', color: '#8b5cf6' }}>
+                    {totals.grossProfit.toLocaleString()} <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>/ {kgiTargets.grossProfit.toLocaleString()} P <span style={{ fontSize: '1rem', fontWeight: 'normal' }}>({grossProfitProgress}%)</span></span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', background: 'var(--bg-primary)', borderRadius: '4px', marginTop: '1rem', overflow: 'hidden' }}>
+                    <div style={{ width: `${grossProfitProgress}%`, height: '100%', background: '#8b5cf6' }} />
                   </div>
                 </div>
               </div>
@@ -427,7 +518,8 @@ export default function KpiDashboard() {
                         <th>商材</th>
                         <th>採用数</th>
                         <th>訪問数</th>
-                        <th>受注数(仮)</th>
+                        <th>受注(件)</th>
+                        <th>粗利(P)</th>
                         <th>架電数</th>
                         <th>有効通話</th>
                         <th>アポ数</th>
@@ -444,6 +536,7 @@ export default function KpiDashboard() {
                             <td>{s.dailySummary?.adopt || 0}</td>
                             <td>{s.dailySummary?.visit || 0}</td>
                             <td>{s.dailySummary?.order || 0}</td>
+                            <td>{s.dailySummary?.grossProfit || 0}</td>
                             <td>{s.totals?.total || 0}</td>
                             <td>{s.totals?.actual || 0}</td>
                             <td>{s.totals?.appoint || 0}</td>

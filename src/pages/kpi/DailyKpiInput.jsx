@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db } from '../../firebase';
-import { doc, getDoc, setDoc, getDocs, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, getDocs, collection, addDoc, serverTimestamp, writeBatch, query, where } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { Save, Clock, ChevronDown, ChevronUp, Info, UploadCloud, CheckCircle } from 'lucide-react';
+import { Save, Clock, ChevronDown, ChevronUp, Info, UploadCloud, CheckCircle, Plus, Trash2 } from 'lucide-react';
 
 import { getVisibleUsers } from '../../utils/teamUtils';
 import './DailyKpiInput.css';
@@ -40,6 +40,7 @@ export default function DailyKpiInput() {
 
   const [isHourlyOpen, setIsHourlyOpen] = useState(false);
   const [isCsvImported, setIsCsvImported] = useState(false);
+  const [ordersList, setOrdersList] = useState([]);
 
   const [detailData, setDetailData] = useState(() => {
     const init = {};
@@ -130,6 +131,21 @@ export default function DailyKpiInput() {
           setDailySummary({ adopt: 0, visit: 0, order: 0, workHours: 0 });
           setIsCsvImported(false);
         }
+
+        // Fetch orders for this date
+        const ordersQ = query(
+          collection(db, 'orders'),
+          where('userId', '==', targetUserId),
+          where('productId', '==', productId),
+          where('orderDate', '==', date)
+        );
+        const ordersSnap = await getDocs(ordersQ);
+        const fetchedOrders = [];
+        ordersSnap.forEach(d => {
+          fetchedOrders.push({ id: d.id, ...d.data() });
+        });
+        setOrdersList(fetchedOrders);
+
       } catch (e) {
         console.error("Error fetching past data:", e);
       }
@@ -159,6 +175,22 @@ export default function DailyKpiInput() {
     setIsCsvImported(true);
   };
 
+  const handleAddOrder = () => {
+    setOrdersList(prev => [...prev, { _tempId: Date.now(), grossProfitPoint: 0 }]);
+  };
+
+  const handleRemoveOrder = (idx) => {
+    setOrdersList(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleOrderChange = (idx, val) => {
+    setOrdersList(prev => {
+      const copy = [...prev];
+      copy[idx].grossProfitPoint = parseInt(val, 10) || 0;
+      return copy;
+    });
+  };
+
   const handleSave = async () => {
     if (!productId || !date || !targetUserId) {
       alert('必須項目を選択してください。');
@@ -178,8 +210,46 @@ export default function DailyKpiInput() {
         totalsToSave[k] = hourlyDataToSave.reduce((sum, h) => sum + (h[k] || 0), 0);
       }
 
+      // Batch for orders
+      const batch = writeBatch(db);
+      
+      const ordersQ = query(
+        collection(db, 'orders'),
+        where('userId', '==', targetUserId),
+        where('productId', '==', productId),
+        where('orderDate', '==', date)
+      );
+      const existingSnap = await getDocs(ordersQ);
+      const existingIds = existingSnap.docs.map(d => d.id);
+      const currentIds = ordersList.filter(o => o.id).map(o => o.id);
+      
+      // Delete removed orders
+      existingIds.forEach(id => {
+        if (!currentIds.includes(id)) {
+          batch.delete(doc(db, 'orders', id));
+        }
+      });
+      
+      // Add/Update orders
+      ordersList.forEach(o => {
+        const ref = o.id ? doc(db, 'orders', o.id) : doc(collection(db, 'orders'));
+        batch.set(ref, {
+          userId: targetUserId,
+          productId: productId,
+          orderDate: date,
+          grossProfitPoint: Number(o.grossProfitPoint) || 0,
+          status: o.status || 'provisional',
+          updatedAt: serverTimestamp(),
+          createdAt: o.createdAt || serverTimestamp()
+        }, { merge: true });
+      });
+
+      // Update order count in dailySummary
+      const orderCount = ordersList.length;
+      const updatedDailySummary = { ...dailySummary, order: orderCount };
+
       const docId = `${targetUserId}_${productId}_${date}`;
-      await setDoc(doc(db, 'dailyKpi', docId), {
+      batch.set(doc(db, 'dailyKpi', docId), {
         userId: targetUserId,
         date: date, 
         productId,
@@ -187,10 +257,12 @@ export default function DailyKpiInput() {
         source: 'manual',
         hourlyData: hourlyDataToSave,
         totals: totalsToSave,
-        dailySummary: dailySummary,
+        dailySummary: updatedDailySummary,
         createdAt: Date.now(),
         updatedAt: Date.now()
       });
+
+      await batch.commit();
 
       await addDoc(collection(db, 'auditLogs'), {
         action: 'manualKpiInput',
@@ -207,7 +279,7 @@ export default function DailyKpiInput() {
         },
         changes: {
           before: null,
-          after: { totals: totalsToSave, dailySummary }
+          after: { totals: totalsToSave, dailySummary: updatedDailySummary, ordersCount: orderCount }
         },
         timestamp: serverTimestamp()
       });
@@ -289,16 +361,7 @@ export default function DailyKpiInput() {
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '1.1rem' }}
               />
             </div>
-            <div className="form-group">
-              <label style={{ fontWeight: 'bold' }}>受注P（暫定）</label>
-              <input 
-                type="number" 
-                min="0"
-                value={dailySummary.order}
-                onChange={e => handleSummaryChange('order', e.target.value)}
-                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '1.1rem' }}
-              />
-            </div>
+
             <div className="form-group">
               <label style={{ fontWeight: 'bold' }}>稼働時間</label>
               <input 
@@ -309,6 +372,42 @@ export default function DailyKpiInput() {
                 onChange={e => handleSummaryChange('workHours', e.target.value)}
                 style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '1.1rem' }}
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Orders Details Section */}
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>受注明細</h2>
+            <button type="button" onClick={handleAddOrder} className="btn btn-secondary btn-sm" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <Plus size={16} /> 受注を追加
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {ordersList.map((order, idx) => (
+              <div key={order.id || order._tempId} style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <span style={{ fontWeight: 'bold', minWidth: '40px' }}>#{idx + 1}</span>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <label style={{ fontWeight: 'bold' }}>粗利 P</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={order.grossProfitPoint || 0}
+                    onChange={e => handleOrderChange(idx, e.target.value)}
+                    style={{ width: '150px', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                  />
+                </div>
+                <button type="button" onClick={() => handleRemoveOrder(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '0.5rem' }}>
+                  <Trash2 size={20} />
+                </button>
+              </div>
+            ))}
+            {ordersList.length === 0 && (
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-secondary)' }}>受注はありません</div>
+            )}
+            <div style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.1rem', marginTop: '0.5rem' }}>
+              本日: {ordersList.length} 件 / {ordersList.reduce((sum, o) => sum + (Number(o.grossProfitPoint) || 0), 0).toLocaleString()} P
             </div>
           </div>
         </div>
@@ -400,7 +499,10 @@ export default function DailyKpiInput() {
       
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', background: '#f3f4f6', padding: '1rem', borderRadius: '8px', color: '#4b5563', fontSize: '0.9rem' }}>
         <Info size={18} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
-        <p style={{ margin: 0 }}>受注Pは暫定値です。確定値は翌々月に「管理設定 &gt; 月次締め入力」でexecutiveが入力します。</p>
+        <div>
+          ※ 粗利Pは暫定値です。確定値は翌々月に『管理設定 &gt; 月次締め入力』で executive が入力します。<br/>
+          ※ KGI目標に対する「今月ここまでの進捗率」はダッシュボードで確認できます。
+        </div>
       </div>
     </div>
   );

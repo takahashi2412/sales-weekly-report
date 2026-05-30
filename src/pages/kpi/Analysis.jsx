@@ -131,13 +131,13 @@ export default function Analysis() {
         
         let qMonth;
         if (user.role === 'leader') {
-          qMonth = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+          qMonth = query(collection(db, 'orders'), where('userId', '==', user.uid));
         } else {
           qMonth = query(
-            collection(db, 'dailyKpi'),
+            collection(db, 'orders'),
             where('productId', '==', selectedProduct),
-            where('date', '>=', startMonthStr),
-            where('date', '<=', endMonthStr)
+            where('orderDate', '>=', startMonthStr),
+            where('orderDate', '<=', endMonthStr)
           );
         }
         const snapMonth = await getDocs(qMonth);
@@ -155,24 +155,21 @@ export default function Analysis() {
             if (wDays > maxWorkDays) maxWorkDays = wDays;
             
             kgiMap[m.id] = {
-              targetOrder: data.monthlyOrderTarget || 0,
+              targetProfit: data.grossProfitTarget || 0,
               workDays: wDays
             };
           } else {
-            kgiMap[m.id] = { targetOrder: 0, workDays: 20 }; 
+            kgiMap[m.id] = { targetProfit: 0, workDays: 20 }; 
           }
         }
-        
-        // If business days hasn't been manually tampered much, we can update it to the fetched KGI workdays
-        // But for simplicity, we just use the fetched workDays directly in calculations if possible
         
         const aggMonth = {};
         teamMembers.forEach(m => {
           aggMonth[m.id] = { 
             name: m.name, 
-            kgiOrder: kgiMap[m.id]?.targetOrder || 0,
+            kgiProfit: kgiMap[m.id]?.targetProfit || 0,
             workDays: kgiMap[m.id]?.workDays || 20,
-            currentOrder: 0 
+            currentProfit: 0 
           };
         });
 
@@ -180,12 +177,11 @@ export default function Analysis() {
           const data = d.data();
           if (user.role === 'leader') {
             if (data.productId !== selectedProduct) return;
-            if (data.date < startMonthStr || data.date > endMonthStr) return;
+            if (data.orderDate < startMonthStr || data.orderDate > endMonthStr) return;
           }
           
           if (aggMonth[data.userId]) {
-            // Using dailySummary.order for pace forecast
-            aggMonth[data.userId].currentOrder += (data.dailySummary?.order || 0);
+            aggMonth[data.userId].currentProfit += (Number(data.grossProfitPoint) || 0);
           }
         });
 
@@ -194,15 +190,15 @@ export default function Analysis() {
           const pDays = parseInt(passedDays, 10) || 1;
           const rate = bDays / pDays;
           
-          const projected = Math.round(d.currentOrder * rate * 10) / 10; // 1 decimal for projection
+          const projected = Math.round(d.currentProfit * rate);
           return {
             ...d,
-            projectedOrder: projected,
-            diff: (projected - d.kgiOrder).toFixed(1)
+            projectedProfit: projected,
+            diff: (projected - d.kgiProfit)
           };
         });
         
-        setProjectionData(proj.sort((a, b) => b.projectedOrder - a.projectedOrder));
+        setProjectionData(proj.sort((a, b) => b.projectedProfit - a.projectedProfit));
       } catch (e) {
         console.error(e);
       } finally {
@@ -296,7 +292,7 @@ export default function Analysis() {
         <div className="glass-panel" style={{ padding: '1.5rem', gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Target size={20} /> 月末着地予測 (受注数)
+              <Target size={20} /> 月末着地予測 (粗利)
             </h3>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <input 
@@ -329,9 +325,9 @@ export default function Analysis() {
               <thead>
                 <tr>
                   <th>メンバー名</th>
-                  <th>KGI目標(受注)</th>
-                  <th>現状実績(暫定)</th>
-                  <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>着地予測</th>
+                  <th>目標粗利(P)</th>
+                  <th>現状粗利(P)</th>
+                  <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>粗利着地予測(P)</th>
                   <th>目標との差分</th>
                   <th>ステータス</th>
                 </tr>
@@ -345,13 +341,13 @@ export default function Analysis() {
                     return (
                       <tr key={i} style={isBehind ? { background: '#fef2f2' } : {}}>
                         <td style={{ fontWeight: 'bold' }}>{d.name}</td>
-                        <td>{d.kgiOrder}</td>
-                        <td>{d.currentOrder}</td>
+                        <td>{d.kgiProfit.toLocaleString()}</td>
+                        <td>{d.currentProfit.toLocaleString()}</td>
                         <td style={{ background: 'rgba(16, 185, 129, 0.05)', fontWeight: 'bold', color: '#059669' }}>
-                          {d.projectedOrder} <TrendingUp size={14} style={{ marginLeft: '4px', color: '#10b981' }}/>
+                          {d.projectedProfit.toLocaleString()} <TrendingUp size={14} style={{ marginLeft: '4px', color: '#10b981' }}/>
                         </td>
                         <td style={{ fontWeight: 'bold', color: isBehind ? '#ef4444' : '#10b981' }}>
-                          {!isBehind ? `+${d.diff}` : d.diff}
+                          {!isBehind ? `+${d.diff.toLocaleString()}` : d.diff.toLocaleString()}
                         </td>
                         <td>
                           {isBehind ? (
@@ -372,7 +368,7 @@ export default function Analysis() {
             </table>
           </div>
           <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            ※ 着地予測 ＝ (現状実績 ÷ 経過日数) × 稼働日数。受注数は日報(K-02)で入力された暫定値を元に計算しています。
+            ※ 着地予測 ＝ (現状実績 ÷ 経過日数) × 稼働日数。粗利実績は受注明細に入力された暫定値を元に計算しています。
           </div>
         </div>
       </div>

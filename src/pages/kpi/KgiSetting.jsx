@@ -22,6 +22,7 @@ export default function KgiSetting() {
   const [rates, setRates] = useState({ 
     workDays: 20,        // 月間稼働日数
     monthlyOrderTarget: 8, 
+    grossProfitTarget: 2500, // 月次粗利目標 P
     orderRate: 25,       // 受注率 (%)
     adoptionRate: 50,    // 採用率 (%) - アポに対する採用比率など
     appointRate: 10,     // アポ率 (%)
@@ -220,6 +221,10 @@ export default function KgiSetting() {
               <div className="form-group">
                 <label>月次目標受注数</label>
                 <input type="number" step="1" value={rates.monthlyOrderTarget} onChange={e => setRates({...rates, monthlyOrderTarget: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>月次粗利目標 P</label>
+                <input type="number" step="1" value={rates.grossProfitTarget} onChange={e => setRates({...rates, grossProfitTarget: e.target.value})} />
               </div>
               <div className="form-group">
                 <label>受注率 (%)</label>
