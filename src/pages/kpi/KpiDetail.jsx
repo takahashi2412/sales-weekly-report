@@ -1,14 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import { BarChart3, Users, Table, Activity } from 'lucide-react';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { Activity, Calendar, History, Clock, AlertCircle, RefreshCw } from 'lucide-react';
 import Breadcrumb from '../../components/Breadcrumb';
 import { useAuth } from '../../context/AuthContext';
-import { getVisibleUsers } from '../../utils/teamUtils';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line, ComposedChart
-} from 'recharts';
+import { getVisibleUserIds, getVisibleUsers } from '../../utils/teamUtils';
+import '../Dashboard.css';
 
 const KPI_KEYS = ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'];
 const KPI_LABELS = {
@@ -19,172 +17,222 @@ const KPI_LABELS = {
   prospect: '見込数',
   appoint: 'アポ数'
 };
-
-const processHourlyData = (hourlyData) => {
-  if (!hourlyData || !Array.isArray(hourlyData)) return [];
-  
-  return hourlyData.filter(h => {
-    if (h.hour === 'late' || (typeof h.hour === 'number' && h.hour >= 19)) return false;
-    return true;
-  }).reduce((acc, h) => {
-    if (h.hour === 'early' || h.hour === 8) {
-      const existing = acc.find(a => a.hour === 8);
-      if (existing) {
-        Object.keys(h).forEach(k => {
-          if (k !== 'hour') existing[k] += (h[k] || 0);
-        });
-      } else {
-        acc.push({ ...h, hour: 8 });
-      }
-    } else {
-      acc.push({ ...h, hour: Number(h.hour) });
-    }
-    return acc;
-  }, []).sort((a, b) => a.hour - b.hour);
-};
+const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 export default function KpiDetail() {
-  const { id } = useParams();
+  let { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   
+  // if no id is provided, default to user.uid
+  if (!id) {
+    id = user.uid;
+  }
+
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('table'); // table, compare, graph
+  const [authError, setAuthError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   
   const [products, setProducts] = useState([]);
-  const [teamMembers, setTeamMembers] = useState([]);
+  const [targetUser, setTargetUser] = useState(null);
   
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedUser, setSelectedUser] = useState(user.uid);
-  const [selectedProduct, setSelectedProduct] = useState('');
-  const [selectedMetric, setSelectedMetric] = useState('total');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().split('T')[0];
+  });
 
-  const [kpiData, setKpiData] = useState(null);
-  const [allTeamKpiData, setAllTeamKpiData] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState('all');
+  const [selectedHourlyMetric, setSelectedHourlyMetric] = useState('total');
+
+  const [dailyKpis, setDailyKpis] = useState([]);
 
   useEffect(() => {
-    const fetchInitialMeta = async () => {
+    const checkAuthAndFetch = async () => {
+      setLoading(true);
+      setAuthError('');
       try {
+        if (user.role === 'leader' && id !== user.uid) {
+          navigate('/dashboard'); // 権限エラー時はリダイレクト
+          return;
+        }
+
+        const visibleUsers = await getVisibleUsers(user);
+        const tUser = visibleUsers.find(u => u.id === id);
+
+        if (!tUser && user.role !== 'executive') {
+          // executive may see everyone, but others are restricted
+          setAuthError('アクセス権限がありません。');
+          setLoading(false);
+          return;
+        }
+        
+        // Ensure user info is fetched
+        if (!tUser) {
+          const uSnap = await getDocs(query(collection(db, 'users'), where('uid', '==', id)));
+          if (!uSnap.empty) {
+            setTargetUser({ id: uSnap.docs[0].id, ...uSnap.docs[0].data() });
+          } else {
+            setAuthError('ユーザーが見つかりません。');
+            setLoading(false);
+            return;
+          }
+        } else {
+          setTargetUser(tUser);
+        }
+
         const prodSnap = await getDocs(collection(db, 'productMasters'));
         const pList = [];
         prodSnap.forEach(d => { if (d.data().isActive !== false) pList.push(d.data()); });
         setProducts(pList);
-        
-        const visible = await getVisibleUsers(user);
-        setTeamMembers(visible);
 
-        if (id) {
-          const parts = id.split('_');
-          if (parts.length === 3) {
-            setSelectedUser(parts[0]);
-            setSelectedProduct(parts[1]);
-            const d = parts[2];
-            setSelectedDate(`${d.substring(0,4)}-${d.substring(4,6)}-${d.substring(6,8)}`);
-          } else {
-            setSelectedDate(new Date().toISOString().split('T')[0]);
-            if (pList.length > 0) setSelectedProduct(pList[0].productId);
-          }
-        } else {
-          setSelectedDate(new Date().toISOString().split('T')[0]);
-          if (pList.length > 0) setSelectedProduct(pList[0].productId);
-        }
+        await fetchData(id);
       } catch (e) {
         console.error(e);
-      } finally {
-        setLoading(false);
+        setErrorMsg('データ取得に失敗しました。');
       }
+      setLoading(false);
     };
-    fetchInitialMeta();
-  }, [id, user]);
 
-  useEffect(() => {
-    if (loading || !selectedDate || !selectedProduct) return;
-    
-    const fetchKpi = async () => {
-      setLoading(true);
-      try {
-        const formattedDate = selectedDate;
-        
-        const q = query(
-          collection(db, 'dailyKpi'),
-          where('userId', '==', selectedUser),
-          where('date', '==', formattedDate),
-          where('productId', '==', selectedProduct)
-        );
-        const snap = await getDocs(q);
-        
-        if (!snap.empty) {
-          const d = snap.docs[0].data();
-          d.displayHourly = processHourlyData(d.hourlyData);
-          setKpiData(d);
-        } else {
-          setKpiData(null);
-        }
+    checkAuthAndFetch();
+  }, [id, user, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        if (user.role === 'executive' || user.role === 'manager') {
-          const tq = query(
-            collection(db, 'dailyKpi'), 
-            where('date', '==', formattedDate),
-            where('productId', '==', selectedProduct)
-          );
-          const tSnap = await getDocs(tq);
-          const allKpis = [];
-          tSnap.forEach(d => {
-            const dt = d.data();
-            if (teamMembers.find(m => m.id === dt.userId)) {
-              dt.displayHourly = processHourlyData(dt.hourlyData);
-              allKpis.push(dt);
-            }
-          });
-          setAllTeamKpiData(allKpis);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchKpi();
-  }, [selectedDate, selectedUser, selectedProduct, loading, teamMembers]);
+  const fetchData = async (userId) => {
+    const sDateObj = new Date(startDate);
+    const eDateObj = new Date(endDate);
+    const diffTime = Math.abs(eDateObj - sDateObj);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-  if (loading && products.length === 0) {
-    return <div style={{ padding: '3rem', textAlign: 'center' }}>読み込み中...</div>;
-  }
+    if (diffDays > 92) {
+      setErrorMsg('最大表示期間は3ヶ月（92日）を上限としています。期間を狭めてください。');
+      return;
+    }
+    setErrorMsg('');
 
-  const formatHour = (hour) => `${hour}:00〜`;
-
-  const getGraphData = () => {
-    if (!kpiData) return [];
-    return kpiData.displayHourly.map(h => ({
-      name: `${h.hour}:00`,
-      架電数: h.total || 0,
-      有効通話率: (h.total || 0) > 0 ? Math.round(((h.actual || 0) / h.total) * 100) : 0
-    }));
+    try {
+      const q = query(
+        collection(db, 'dailyKpi'),
+        where('userId', '==', userId),
+        where('date', '>=', startDate),
+        where('date', '<=', endDate)
+      );
+      
+      const snap = await getDocs(q);
+      const list = [];
+      snap.forEach(d => {
+        list.push({ id: d.id, ...d.data() });
+      });
+      
+      list.sort((a, b) => b.date.localeCompare(a.date));
+      setDailyKpis(list);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg('データ取得に失敗しました。');
+    }
   };
 
+  const handleFetchClick = () => {
+    setLoading(true);
+    fetchData(id).then(() => setLoading(false));
+  };
+
+  const filteredKpis = useMemo(() => {
+    if (selectedProduct === 'all') return dailyKpis;
+    return dailyKpis.filter(k => k.productId === selectedProduct);
+  }, [dailyKpis, selectedProduct]);
+
+  // 時間帯別データの集計 (全日付をマージ)
+  const aggregatedHourly = useMemo(() => {
+    const map = {};
+    HOURS.forEach(h => {
+      map[h] = { hour: h, total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
+    });
+
+    filteredKpis.forEach(kpi => {
+      if (!kpi.hourlyData || !Array.isArray(kpi.hourlyData)) return;
+      kpi.hourlyData.forEach(hd => {
+        let h = hd.hour;
+        if (h === 'early') h = 8;
+        if (h === 'late' || h > 18) return;
+        h = Number(h);
+        
+        if (map[h]) {
+          KPI_KEYS.forEach(key => {
+            map[h][key] += (hd[key] || 0);
+          });
+        }
+      });
+    });
+    
+    return Object.values(map).sort((a, b) => a.hour - b.hour);
+  }, [filteredKpis]);
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    if (d.includes('-')) return d.replace(/-/g, '/');
+    if (d.length === 8) return `${d.substring(0, 4)}/${d.substring(4, 6)}/${d.substring(6, 8)}`;
+    return d;
+  };
+
+  const getMaxMetricValue = () => {
+    if (aggregatedHourly.length === 0) return 1;
+    const max = Math.max(...aggregatedHourly.map(h => h[selectedHourlyMetric] || 0));
+    return max === 0 ? 1 : max;
+  };
+
+  if (authError) {
+    return <div style={{ padding: '3rem', textAlign: 'center', color: '#b91c1c' }}>{authError}</div>;
+  }
+
   return (
-    <div className="page-container" style={{ padding: '2rem' }}>
+    <div className="page-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       <Breadcrumb items={[
-        { label: 'KPIダッシュボード', path: '/kpi' },
-        { label: '時間帯別KPI詳細 (K-06)' }
+        { label: 'KPI履歴・推移', path: '/kpi/history' },
+        { label: 'KPI詳細 (K-06)' }
       ]} />
 
       <div className="page-header" style={{ marginBottom: '2rem', marginTop: '1rem' }}>
-        <h1>時間帯別KPI詳細 (K-06)</h1>
-        <p>個人の時間帯別データの確認とチーム比較</p>
+        <h1>KPI詳細 (K-06): {targetUser?.name || '読み込み中...'}</h1>
+        <p>対象ユーザーの日次KPI一覧および時間帯別ヒートマップ</p>
       </div>
 
+      {errorMsg && (
+        <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <AlertCircle size={20} />
+          {errorMsg}
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label style={{ fontWeight: 'bold' }}>日付:</label>
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--bg-secondary)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+          <Calendar size={18} style={{ color: 'var(--text-secondary)' }} />
+          <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>期間:</label>
           <input 
             type="date" 
-            value={selectedDate} 
-            onChange={e => setSelectedDate(e.target.value)}
-            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+            value={startDate} 
+            onChange={e => setStartDate(e.target.value)}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)' }} 
           />
+          <span>〜</span>
+          <input 
+            type="date" 
+            value={endDate} 
+            onChange={e => setEndDate(e.target.value)}
+            style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)' }} 
+          />
+          <button 
+            onClick={handleFetchClick}
+            className="btn btn-primary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.4rem 0.8rem' }}
+          >
+            <RefreshCw size={14} /> 反映
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -194,179 +242,131 @@ export default function KpiDetail() {
             onChange={e => setSelectedProduct(e.target.value)}
             style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
           >
+            <option value="all">全商材合計</option>
             {products.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
           </select>
         </div>
-
-        {teamMembers.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label style={{ fontWeight: 'bold' }}>対象者:</label>
-            <select 
-              value={selectedUser} 
-              onChange={e => setSelectedUser(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
-            >
-              {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-        )}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
-        {[
-          { id: 'table', label: 'テーブル表示', icon: <Table size={16} /> },
-          ...(user.role === 'executive' || user.role === 'manager' || user.role === 'leader' 
-            ? [{ id: 'compare', label: 'チーム比較', icon: <Users size={16} /> }] : []),
-          { id: 'graph', label: 'グラフ分析', icon: <BarChart3 size={16} /> }
-        ].map(tab => (
-          <button 
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)} 
-            style={{ 
-              padding: '0.75rem 1.5rem', 
-              background: 'none', 
-              border: 'none', 
-              borderBottom: activeTab === tab.id ? '2px solid var(--accent-primary)' : '2px solid transparent',
-              color: activeTab === tab.id ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              fontWeight: activeTab === tab.id ? 'bold' : 'normal',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {!kpiData && activeTab !== 'compare' && (
-        <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          指定された条件のデータが見つかりません。
-        </div>
-      )}
-
-      {/* Tab 1: Table */}
-      {activeTab === 'table' && kpiData && (
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>個人の時間帯別データ</h3>
-          <div className="table-container">
-            <table className="reports-table">
-              <thead>
-                <tr>
-                  <th>時間帯</th>
-                  {KPI_KEYS.map(k => <th key={k}>{KPI_LABELS[k]}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {kpiData.displayHourly.map((h, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 'bold' }}>{formatHour(h.hour)}</td>
-                    {KPI_KEYS.map(k => (
-                      <td key={k}>{h[k] || 0}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--bg-secondary)', fontWeight: 'bold' }}>
-                  <td>合計</td>
-                  {KPI_KEYS.map(k => (
-                    <td key={k}>{kpiData.totals?.[k] || 0}</td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 2: Compare */}
-      {activeTab === 'compare' && (
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          {(user.role === 'leader' || user.role === 'member') ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              権限がありません。チーム比較はマネージャー以上のみ閲覧可能です。
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3>チームメンバー時間帯比較</h3>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem' }}>データを集計中...</div>
+      ) : (
+        <div style={{ display: 'grid', gap: '2rem', gridTemplateColumns: '1fr' }}>
+          
+          {/* 時間帯別KPIヒートマップ */}
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Clock size={20} /> 時間帯別アクティビティ（期間合計）
+              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>表示指標:</label>
                 <select 
-                  value={selectedMetric}
-                  onChange={e => setSelectedMetric(e.target.value)}
+                  value={selectedHourlyMetric} 
+                  onChange={e => setSelectedHourlyMetric(e.target.value)}
                   style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
                 >
                   {KPI_KEYS.map(k => <option key={k} value={k}>{KPI_LABELS[k]}</option>)}
                 </select>
               </div>
+            </div>
 
-              {allTeamKpiData.length === 0 ? (
-                <p style={{ color: 'var(--text-secondary)' }}>比較対象のデータがありません。</p>
-              ) : (
-                <div className="table-container" style={{ overflowX: 'auto' }}>
-                  <table className="reports-table">
-                    <thead>
-                      <tr>
-                        <th style={{ minWidth: '120px' }}>メンバー名</th>
-                        {[8,9,10,11,12,13,14,15,16,17,18].map(h => (
-                          <th key={h}>{h}:00〜</th>
-                        ))}
-                        <th>合計</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teamMembers.map(m => {
-                        const memberKpi = allTeamKpiData.find(d => d.userId === m.id);
-                        if (!memberKpi) return null;
-                        return (
-                          <tr key={m.id} style={{ background: m.id === selectedUser ? 'rgba(59,130,246,0.1)' : 'transparent' }}>
-                            <td style={{ fontWeight: 'bold' }}>{m.name}</td>
-                            {[8,9,10,11,12,13,14,15,16,17,18].map(h => {
-                              const hData = memberKpi.displayHourly.find(dh => dh.hour === h);
-                              return <td key={h}>{hData ? (hData[selectedMetric] || 0) : 0}</td>;
-                            })}
-                            <td style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>
-                              {memberKpi.totals?.[selectedMetric] || 0}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Tab 3: Graph */}
-      {activeTab === 'graph' && kpiData && (
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Activity size={20} /> 時間帯別の架電数・有効通話率
-          </h3>
-          
-          <div style={{ width: '100%', height: '400px' }}>
-            <ResponsiveContainer>
-              <ComposedChart data={getGraphData()} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.1)" />
-                <XAxis dataKey="name" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                <YAxis yAxisId="left" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)' }}
-                  itemStyle={{ color: 'var(--text-primary)' }}
-                />
-                <Legend />
-                <Bar yAxisId="left" dataKey="架電数" fill="var(--accent-primary)" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                <Line yAxisId="right" type="monotone" dataKey="有効通話率" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981' }} />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <div style={{ overflowX: 'auto', paddingBottom: '1rem' }}>
+              <div style={{ display: 'flex', gap: '4px', minWidth: '600px' }}>
+                {aggregatedHourly.map(h => {
+                  const val = h[selectedHourlyMetric] || 0;
+                  const maxVal = getMaxMetricValue();
+                  const intensity = Math.max(0.05, val / maxVal);
+                  
+                  return (
+                    <div key={h.hour} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ 
+                        width: '100%', 
+                        height: '100px', 
+                        backgroundColor: `rgba(59, 130, 246, ${intensity})`,
+                        border: '1px solid rgba(0,0,0,0.05)',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: intensity > 0.5 ? 'white' : 'var(--text-primary)',
+                        fontWeight: 'bold',
+                        transition: 'background-color 0.3s'
+                      }}>
+                        {val}
+                      </div>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {h.hour}:00
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="table-container" style={{ marginTop: '2rem' }}>
+              <table className="reports-table">
+                <thead>
+                  <tr>
+                    <th>時間帯</th>
+                    {KPI_KEYS.map(k => <th key={k}>{KPI_LABELS[k]}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggregatedHourly.map((h) => (
+                    <tr key={h.hour}>
+                      <td style={{ fontWeight: 'bold' }}>{h.hour}:00〜</td>
+                      {KPI_KEYS.map(k => (
+                        <td key={k}>{h[k] || 0}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {/* 日次KPI一覧 */}
+          <div className="glass-panel" style={{ padding: '1.5rem' }}>
+            <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <History size={20} /> 日次KPIデータ一覧
+            </h2>
+            <div className="table-container">
+              <table className="reports-table">
+                <thead>
+                  <tr>
+                    <th>日付</th>
+                    <th>商材</th>
+                    <th>架電数</th>
+                    <th>有効通話</th>
+                    <th>再コール</th>
+                    <th>担当者通話</th>
+                    <th>見込数</th>
+                    <th>アポ数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredKpis.length === 0 ? (
+                    <tr><td colSpan="8" style={{ textAlign: 'center' }}>データがありません</td></tr>
+                  ) : (
+                    filteredKpis.map((k, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 'bold' }}>{formatDate(k.date)}</td>
+                        <td>{products.find(p => p.productId === k.productId)?.productName || k.productId}</td>
+                        <td>{k.totals?.total || 0}</td>
+                        <td>{k.totals?.actual || 0}</td>
+                        <td>{k.totals?.recall || 0}</td>
+                        <td>{k.totals?.owner || 0}</td>
+                        <td>{k.totals?.prospect || 0}</td>
+                        <td>{k.totals?.appoint || 0}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </div>
       )}
     </div>

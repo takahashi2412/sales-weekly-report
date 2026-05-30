@@ -1,0 +1,295 @@
+import { useState, useEffect } from 'react';
+import { db } from '../../firebase';
+import { doc, setDoc, getDocs, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../../context/AuthContext';
+import { Save, Clock, FileText } from 'lucide-react';
+
+import { getVisibleUsers } from '../../utils/teamUtils';
+
+const KPI_KEYS = [
+  { key: 'total', label: '譫ｶ髮ｻ謨ｰ' },
+  { key: 'actual', label: '譛牙柑騾夊ｩｱ' },
+  { key: 'recall', label: '蜀阪さ繝ｼ繝ｫ' },
+  { key: 'owner', label: '諡・ｽ楢・夊ｩｱ' },
+  { key: 'prospect', label: '隕玖ｾｼ謨ｰ' },
+  { key: 'appoint', label: '繧｢繝晄焚' }
+];
+
+const HOUR_LABELS = [
+  'early',
+  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  'late'
+];
+
+const HOUR_DISPLAY = {
+  'early': '0:00縲・:59',
+  'late': '21:00縲・3:59'
+};
+
+export default function DailyKpiInput() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [productId, setProductId] = useState('');
+  const [targetUserId, setTargetUserId] = useState(user.uid);
+  const [mode, setMode] = useState('summary'); // 'summary' | 'detail'
+
+  const [summaryData, setSummaryData] = useState({
+    total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0
+  });
+
+  const [detailData, setDetailData] = useState(() => {
+    const init = {};
+    HOUR_LABELS.forEach(h => {
+      init[h] = { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
+    });
+    return init;
+  });
+
+  useEffect(() => {
+    const fetchInitialMeta = async () => {
+      const snap = await getDocs(collection(db, 'productMasters'));
+      const list = [];
+      snap.forEach(d => {
+        if (d.data().isActive !== false) {
+          list.push(d.data());
+        }
+      });
+      setProducts(list);
+      if (user?.currentProductId) {
+        setProductId(user.currentProductId);
+      } else if (list.length > 0) {
+        setProductId(list[0].productId);
+      }
+
+      const visible = await getVisibleUsers(user);
+      setTeamMembers(visible);
+    };
+    fetchInitialMeta();
+  }, [user]);
+
+  const handleSummaryChange = (key, val) => {
+    setSummaryData(prev => ({ ...prev, [key]: parseInt(val, 10) || 0 }));
+  };
+
+  const handleDetailChange = (hour, key, val) => {
+    setDetailData(prev => ({
+      ...prev,
+      [hour]: {
+        ...prev[hour],
+        [key]: parseInt(val, 10) || 0
+      }
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!productId || !date || !targetUserId) {
+      alert('蠢・磯・岼繧帝∈謚槭＠縺ｦ縺上□縺輔＞縲・);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let hourlyDataToSave = [];
+      let totalsToSave = { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
+
+      if (mode === 'summary') {
+        const hourCount = 12;
+        const perHour = {};
+        for (const k of KPI_KEYS.map(k => k.key)) {
+          perHour[k] = Math.floor(summaryData[k] / hourCount);
+          totalsToSave[k] = summaryData[k]; 
+        }
+
+        hourlyDataToSave = HOUR_LABELS.map(h => {
+          if (h === 'early' || h === 'late') {
+            return { hour: h, total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
+          }
+          return { hour: h, ...perHour };
+        });
+      } else {
+        hourlyDataToSave = HOUR_LABELS.map(h => ({
+          hour: h,
+          ...detailData[h]
+        }));
+        
+        for (const k of KPI_KEYS.map(k => k.key)) {
+          totalsToSave[k] = hourlyDataToSave.reduce((sum, h) => sum + (h[k] || 0), 0);
+        }
+      }
+
+      const docId = `${targetUserId}_${productId}_${date}`;
+      await setDoc(doc(db, 'dailyKpi', docId), {
+        userId: targetUserId,
+        date: date, 
+        productId,
+        productVersion: 1,
+        source: 'manual',
+        hourlyData: hourlyDataToSave,
+        totals: totalsToSave,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'manualKpiInput',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'kpi',
+          id: docId,
+          name: `謇句虚KPI蜈･蜉・(${date})`
+        },
+        changes: {
+          before: null,
+          after: totalsToSave
+        },
+        timestamp: serverTimestamp()
+      });
+
+      alert('譌･谺｡KPI繧剃ｿ晏ｭ倥＠縺ｾ縺励◆縲・);
+    } catch (e) {
+      console.error(e);
+      alert('菫晏ｭ倥↓螟ｱ謨励＠縺ｾ縺励◆: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="page-container" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
+      <div className="page-header" style={{ marginBottom: '2rem' }}>
+        <h1>譌･蝣ｱ繝ｻKPI謇句虚蜈･蜉・(K-02)</h1>
+        <p>CSV蜿冶ｾｼ縺悟茜逕ｨ縺ｧ縺阪↑縺・ｴ蜷医ｄ縲∽ｸ驛ｨ菫ｮ豁｣繧定｡後＞縺溘＞蝣ｴ蜷医・繝舌ャ繧ｯ繧｢繝・・蜈･蜉帷判髱｢縺ｧ縺・/p>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+          
+          {(user.role === 'executive' || user.role === 'manager') && teamMembers.length > 0 && (
+            <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+              <label style={{ fontWeight: 'bold' }}>蟇ｾ雎｡繝｡繝ｳ繝舌・</label>
+              <select 
+                value={targetUserId} 
+                onChange={e => setTargetUserId(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              >
+                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+            <label style={{ fontWeight: 'bold' }}>蟇ｾ雎｡譌･</label>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={e => setDate(e.target.value)} 
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+            />
+          </div>
+          <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+            <label style={{ fontWeight: 'bold' }}>蟇ｾ雎｡蝠・攝</label>
+            <select 
+              value={productId} 
+              onChange={e => setProductId(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+            >
+              {products.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+          <button 
+            className={`btn ${mode === 'summary' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setMode('summary')}
+            style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <FileText size={18} style={{ marginRight: '0.5rem' }} /> 蜷郁ｨ医・縺ｿ蜈･蜉帙Δ繝ｼ繝・
+          </button>
+          <button 
+            className={`btn ${mode === 'detail' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setMode('detail')}
+            style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Clock size={18} style={{ marginRight: '0.5rem' }} /> 譎る俣蟶ｯ蛻･ 隧ｳ邏ｰ繝｢繝ｼ繝・
+          </button>
+        </div>
+
+        {mode === 'summary' ? (
+          <div className="summary-input" style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', textAlign: 'center' }}>
+              1譌･蛻・・蜷郁ｨ域焚蛟､繧貞・蜉帙＠縺ｦ縺上□縺輔＞縲よ凾髢灘ｸｯ蛻･・・譎ゅ・0譎ゑｼ峨↓蝮・ｭ牙牡繧雁ｽ薙※縺輔ｌ縺ｦ菫晏ｭ倥＆繧後∪縺吶・
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem' }}>
+              {KPI_KEYS.map(k => (
+                <div key={k.key} className="form-group">
+                  <label>{k.label}</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    value={summaryData[k.key]}
+                    onChange={e => handleSummaryChange(k.key, e.target.value)}
+                    style={{ width: '100%', padding: '0.75rem', fontSize: '1.25rem', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="detail-input" style={{ overflowX: 'auto', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <table className="reports-table" style={{ minWidth: '800px' }}>
+              <thead>
+                <tr>
+                  <th>譎る俣蟶ｯ</th>
+                  {KPI_KEYS.map(k => <th key={k.key}>{k.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {HOUR_LABELS.map(h => (
+                  <tr key={h}>
+                    <td style={{ fontWeight: 'bold' }}>{typeof h === 'number' ? `${h}:00縲彖 : HOUR_DISPLAY[h]}</td>
+                    {KPI_KEYS.map(k => (
+                      <td key={k.key}>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={detailData[h][k.key] || 0}
+                          onChange={e => handleDetailChange(h, k.key, e.target.value)}
+                          style={{ width: '100%', padding: '0.5rem', textAlign: 'right' }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+          <button 
+            className="btn btn-primary" 
+            onClick={handleSave} 
+            disabled={loading}
+            style={{ padding: '1rem 3rem', fontSize: '1.1rem', display: 'inline-flex', alignItems: 'center' }}
+          >
+            <Save size={20} style={{ marginRight: '0.5rem' }} />
+            {loading ? '菫晏ｭ倅ｸｭ...' : '繝・・繧ｿ繧剃ｿ晏ｭ倥☆繧・}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

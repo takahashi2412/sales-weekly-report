@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { Link, Navigate } from 'react-router-dom';
 import { Clock, AlertTriangle, FileText } from 'lucide-react';
 import '../Dashboard.css';
 
 export default function DailyPending() {
-  const { isManagerOrAbove } = useAuth();
+  const { user, isManagerOrAbove } = useAuth();
   const [loading, setLoading] = useState(true);
   const [pendingReports, setPendingReports] = useState([]);
   const [tab, setTab] = useState('unreviewed'); // 'unreviewed' | 'unsubmitted'
@@ -20,10 +20,25 @@ export default function DailyPending() {
     const fetchPending = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, 'dailyReports'), where('status', '==', 'submitted'), orderBy('date', 'desc'));
+        let q;
+        if (user.role === 'leader') {
+          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid));
+        } else {
+          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
+        }
         const snap = await getDocs(q);
-        const list = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+
+        let list = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (data.status === 'submitted') {
+            list.push({ id: d.id, ...data });
+          }
+        });
+
+        if (user.role === 'leader') {
+          list.sort((a, b) => b.date.localeCompare(a.date));
+        }
         setPendingReports(list);
       } catch (e) {
         console.error(e);

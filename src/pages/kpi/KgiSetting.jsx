@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebase';
 import { collection, doc, setDoc, getDocs, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
-import { Target, CheckCircle, XCircle, Send, AlertTriangle } from 'lucide-react';
+import { Target, CheckCircle, XCircle, Send, AlertTriangle, Calculator } from 'lucide-react';
 
 export default function KgiSetting() {
   const { user, isManagerOrAbove } = useAuth();
@@ -17,7 +17,19 @@ export default function KgiSetting() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [productId, setProductId] = useState('');
-  const [rates, setRates] = useState({ appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 });
+  
+  // Define default rates based on user spec
+  const [rates, setRates] = useState({ 
+    workDays: 20,        // 月間稼働日数
+    monthlyOrderTarget: 8, 
+    orderRate: 25,       // 受注率 (%)
+    adoptionRate: 50,    // 採用率 (%) - アポに対する採用比率など
+    appointRate: 10,     // アポ率 (%)
+    prospectRate: 10,    // 見込率 (%)
+    contactRate: 25,     // 接触率 (%)
+    recallRate: 50,      // 再コール率 (%)
+    actualCallRate: 50   // 実コール率 (%)
+  });
 
   const fetchProducts = async () => {
     const snap = await getDocs(collection(db, 'productMasters'));
@@ -30,16 +42,6 @@ export default function KgiSetting() {
     if (!productId && list.length > 0) {
       const initProduct = user?.currentProductId || list[0].productId;
       setProductId(initProduct);
-      applyDefaultRates(list, initProduct);
-    }
-  };
-
-  const applyDefaultRates = (productList, pId) => {
-    const p = productList.find(x => x.productId === pId);
-    if (p && p.conversionRates && p.conversionRates[user.role]) {
-      setRates(p.conversionRates[user.role]);
-    } else {
-      setRates({ appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 });
     }
   };
 
@@ -64,8 +66,45 @@ export default function KgiSetting() {
   const handleProductChange = (e) => {
     const pId = e.target.value;
     setProductId(pId);
-    applyDefaultRates(products, pId);
   };
+
+  // リアルタイム自動計算ロジック
+  const calculations = useMemo(() => {
+    const safeDiv = (numerator, percent) => {
+      const p = parseFloat(percent);
+      if (!p || p <= 0) return 0;
+      return Math.ceil(numerator / (p / 100));
+    };
+
+    const target = parseFloat(rates.monthlyOrderTarget) || 0;
+    
+    // 逆算ロジック (例)
+    // 採用数 = 受注数 / 受注率
+    // アポ数 = 採用数 / 採用率
+    // オーナー接触数 = アポ数 / アポ率
+    // 実コール数 = オーナー接触数 / 接触率
+    // 総コール数 = 実コール数 / 実コール率
+    
+    const requiredAdoptions = safeDiv(target, rates.orderRate);
+    const requiredAppoints = safeDiv(requiredAdoptions, rates.adoptionRate);
+    const requiredContacts = safeDiv(requiredAppoints, rates.appointRate);
+    const requiredActualCalls = safeDiv(requiredContacts, rates.contactRate);
+    const requiredTotalCalls = safeDiv(requiredActualCalls, rates.actualCallRate);
+
+    // 副次指標の計算
+    const estimatedProspects = Math.floor(requiredContacts * (parseFloat(rates.prospectRate)/100 || 0));
+    const estimatedRecalls = Math.floor(requiredTotalCalls * (parseFloat(rates.recallRate)/100 || 0));
+
+    return {
+      requiredAdoptions,
+      requiredAppoints,
+      requiredContacts,
+      requiredActualCalls,
+      requiredTotalCalls,
+      estimatedProspects,
+      estimatedRecalls
+    };
+  }, [rates]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -78,10 +117,8 @@ export default function KgiSetting() {
         productId,
         targetMonth: month,
         status: 'pending',
-        appointRate: parseFloat(rates.appointRate),
-        adoptionRate: parseFloat(rates.adoptionRate),
-        orderRate: parseFloat(rates.orderRate),
-        monthlyOrderTarget: parseFloat(rates.monthlyOrderTarget),
+        ...Object.keys(rates).reduce((acc, key) => ({ ...acc, [key]: parseFloat(rates[key]) }), {}),
+        calculatedTargets: calculations, // 計算結果も保存
         comment: '',
         approvedBy: null,
         createdAt: serverTimestamp(),
@@ -96,7 +133,6 @@ export default function KgiSetting() {
     }
   };
 
-  // 承認/差戻しは hasOnly(['status','approvedBy','comment','updatedAt']) に合致させる
   const handleApproval = async (targetId, isApprove, comment) => {
     if (!isApprove && !comment) {
       alert('差戻しの場合はコメント（理由）を入力してください。');
@@ -144,7 +180,7 @@ export default function KgiSetting() {
     <div className="page-container" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
       <div className="page-header" style={{ marginBottom: '2rem' }}>
         <h1>KGI・KPI月次設定 (K-03)</h1>
-        <p>月間の目標値（KGI）を設定し、承認を受けます</p>
+        <p>月間の目標値（KGI）を設定し、自動計算された必要行動量を確認・申請します</p>
       </div>
 
       <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
@@ -174,32 +210,83 @@ export default function KgiSetting() {
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
-              ※商材マスタの基準値（{user.role}）が初期入力されています。必要に応じて修正してください。
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
+          <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
+            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)', fontSize: '1.1rem' }}>各種転換率・目標の入力</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '1rem' }}>
               <div className="form-group">
-                <label>アポ率</label>
-                <input type="number" step="0.001" value={rates.appointRate} onChange={e => setRates({...rates, appointRate: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>採用率</label>
-                <input type="number" step="0.01" value={rates.adoptionRate} onChange={e => setRates({...rates, adoptionRate: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label>受注率</label>
-                <input type="number" step="0.01" value={rates.orderRate} onChange={e => setRates({...rates, orderRate: e.target.value})} />
+                <label>月間稼働日数 (日)</label>
+                <input type="number" step="1" value={rates.workDays} onChange={e => setRates({...rates, workDays: e.target.value})} />
               </div>
               <div className="form-group">
                 <label>月次目標受注数</label>
                 <input type="number" step="1" value={rates.monthlyOrderTarget} onChange={e => setRates({...rates, monthlyOrderTarget: e.target.value})} />
               </div>
+              <div className="form-group">
+                <label>受注率 (%)</label>
+                <input type="number" step="0.1" value={rates.orderRate} onChange={e => setRates({...rates, orderRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>採用率 (%)</label>
+                <input type="number" step="0.1" value={rates.adoptionRate} onChange={e => setRates({...rates, adoptionRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>アポ率 (%)</label>
+                <input type="number" step="0.1" value={rates.appointRate} onChange={e => setRates({...rates, appointRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>接触率 (%)</label>
+                <input type="number" step="0.1" value={rates.contactRate} onChange={e => setRates({...rates, contactRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>実コール率 (%)</label>
+                <input type="number" step="0.1" value={rates.actualCallRate} onChange={e => setRates({...rates, actualCallRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>見込率 (%)</label>
+                <input type="number" step="0.1" value={rates.prospectRate} onChange={e => setRates({...rates, prospectRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>再コール率 (%)</label>
+                <input type="number" step="0.1" value={rates.recallRate} onChange={e => setRates({...rates, recallRate: e.target.value})} />
+              </div>
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-            <Send size={18} style={{ marginRight: '0.5rem' }} /> {loading ? '申請中...' : '承認をリクエストする'}
+          <div style={{ background: 'linear-gradient(135deg, #f0fdfa 0%, #e0f2fe 100%)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem', border: '1px solid #bae6fd' }}>
+            <h3 style={{ marginBottom: '1rem', color: '#0369a1', fontSize: '1.1rem', display: 'flex', alignItems: 'center' }}>
+              <Calculator size={18} style={{ marginRight: '0.5rem' }} /> 自動計算された月間必要行動量
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem', textAlign: 'center' }}>
+              <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>必要採用数</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{calculations.requiredAdoptions}</div>
+              </div>
+              <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>必要アポ数</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{calculations.requiredAppoints}</div>
+              </div>
+              <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>必要接触数</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{calculations.requiredContacts}</div>
+              </div>
+              <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>必要実コール数</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{calculations.requiredActualCalls}</div>
+              </div>
+              <div style={{ background: 'white', padding: '1rem', borderRadius: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '2px solid #0284c7' }}>
+                <div style={{ fontSize: '0.85rem', color: '#0284c7', fontWeight: 'bold' }}>必要総架電数</div>
+                <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0284c7' }}>{calculations.requiredTotalCalls}</div>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>推計見込数: <strong>{calculations.estimatedProspects}</strong></span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>推計再コール: <strong>{calculations.estimatedRecalls}</strong></span>
+            </div>
+          </div>
+
+          <button type="submit" className="btn btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '1rem' }}>
+            <Send size={18} style={{ marginRight: '0.5rem' }} /> {loading ? '申請中...' : 'この目標と行動量で承認をリクエストする'}
           </button>
         </form>
       </div>
@@ -218,7 +305,7 @@ export default function KgiSetting() {
                     <th>申請者</th>
                     <th>対象月</th>
                     <th>商材</th>
-                    <th>設定値 (ア/採/受/目標)</th>
+                    <th>目標受注 / 必須架電</th>
                     <th>コメント / アクション</th>
                   </tr>
                 </thead>
@@ -228,8 +315,9 @@ export default function KgiSetting() {
                       <td style={{ fontWeight: 'bold' }}>{t.userName || '不明'}</td>
                       <td>{t.targetMonth}</td>
                       <td>{products.find(p => p.productId === t.productId)?.productName || t.productId}</td>
-                      <td style={{ fontSize: '0.9rem' }}>
-                        {t.appointRate} / {t.adoptionRate} / {t.orderRate} / {t.monthlyOrderTarget}件
+                      <td style={{ fontSize: '0.95rem' }}>
+                        <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{t.monthlyOrderTarget}件</span> / 
+                        <span style={{ color: '#0284c7', fontWeight: 'bold' }}> {t.calculatedTargets?.requiredTotalCalls || '-'}件</span>
                       </td>
                       <td style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <input 

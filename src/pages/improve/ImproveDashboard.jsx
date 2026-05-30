@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, addDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { RefreshCw, Plus, CheckCircle, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import '../Dashboard.css';
@@ -20,22 +20,33 @@ export default function ImproveDashboard() {
     const fetchTasks = async () => {
       try {
         let q;
+        if (user.role === 'leader') {
+          q = query(collection(db, 'improveTasks'), where('userId', '==', user.uid));
+        } else {
+          q = query(collection(db, 'improveTasks'), orderBy('createdAt', 'desc'), limit(50));
+        }
+        
         if (isManagerOrAbove) {
-          q = query(collection(db, 'improveTasks'), orderBy('createdAt', 'desc'));
-          
           // Fetch users for manager to assign tasks
           const uSnap = await getDocs(collection(db, 'users'));
           const uList = [];
           uSnap.forEach(d => uList.push({ uid: d.id, ...d.data() }));
           setUsersList(uList);
           if (uList.length > 0) setTargetUserId(uList[0].uid);
-        } else {
-          q = query(collection(db, 'improveTasks'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
         }
         
         const snap = await getDocs(q);
-        const list = [];
+        let list = [];
         snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        
+        if (user.role === 'leader') {
+          list.sort((a, b) => {
+            const timeA = a.createdAt?.toMillis?.() || 0;
+            const timeB = b.createdAt?.toMillis?.() || 0;
+            return timeB - timeA;
+          });
+        }
+        
         setTasks(list);
       } catch (e) {
         console.error(e);

@@ -146,6 +146,7 @@ exports.commitCsvImport = functions.https.onCall(async (data, context) => {
         status: 'in_progress',
     });
     // 2. メンバー別dailyKpiを一括書込
+    const KPI_KEYS = ['total', 'actual', 'recall', 'owner', 'prospect', 'appoint'];
     let successCount = 0;
     for (const member of members) {
         if (!member.userId)
@@ -155,6 +156,11 @@ exports.commitCsvImport = functions.https.onCall(async (data, context) => {
         const existing = await docRef.get();
         if (existing.exists && !overwrite)
             continue;
+        // hourlyDataからtotalsを再集計
+        const calculatedTotals = {};
+        for (const key of KPI_KEYS) {
+            calculatedTotals[key] = (member.hourlyData || []).reduce((s, h) => s + (Number(h[key]) || 0), 0);
+        }
         batch.set(docRef, {
             userId: member.userId,
             date: targetDate,
@@ -166,18 +172,22 @@ exports.commitCsvImport = functions.https.onCall(async (data, context) => {
             importedBy: context.auth.uid,
             importedAt: admin.firestore.FieldValue.serverTimestamp(),
             hourlyData: member.hourlyData,
-            totals: member.totals,
+            totals: calculatedTotals,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         successCount++;
     }
     // 3. dailyKpiSummary（商材別の全社合計）を保存
+    const summaryTotals = {};
+    for (const key of KPI_KEYS) {
+        summaryTotals[key] = (summary.hourlyData || []).reduce((s, h) => s + (Number(h[key]) || 0), 0);
+    }
     const summaryId = `${productId}_${targetDate}`;
     const summaryRef = db.collection('dailyKpiSummary').doc(summaryId);
     batch.set(summaryRef, {
         summaryId, productId, date: targetDate,
         hourlyData: summary.hourlyData,
-        totals: summary.totals,
+        totals: summaryTotals,
         memberCount: successCount,
         importLogId: logRef.id,
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),

@@ -5,169 +5,94 @@ service cloud.firestore {
     function isAuthenticated() { return request.auth != null; }
     function getRole() { return request.auth.token.role; }
     function isExecutive() { return isAuthenticated() && getRole() == 'executive'; }
-    function isManagerOrAbove() {
-      return isAuthenticated() && (getRole() == 'executive' || getRole() == 'manager');
-    }
+    function isManagerOrAbove() { return isAuthenticated() && (getRole() == 'executive' || getRole() == 'manager'); }
     function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
 
-    // ★ productMasters
-    match /productMasters/{productId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isExecutive();
-    }
-
-    // ★ userProductAssignments
-    match /userProductAssignments/{assignmentId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow create: if isManagerOrAbove() &&
-        request.resource.data.assignedBy == request.auth.uid;
-      allow update: if isManagerOrAbove();
-      allow delete: if isExecutive();
-    }
-
-    // users
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow update: if isOwner(userId) &&
-        !('role' in request.resource.data.diff(resource.data).affectedKeys()) &&
-        !('currentProductId' in request.resource.data.diff(resource.data).affectedKeys());
       allow create, delete: if isExecutive();
-      allow update: if isExecutive();
+      allow update: if isOwner(userId) && !('role' in request.resource.data.diff(resource.data).affectedKeys()) || isExecutive();
     }
-
-    // teams
     match /teams/{teamId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isExecutive();
     }
-
-    // ▲ dailyKpi（v4: CSV取込上書きルール追加）
-    match /dailyKpi/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      // 作成：本人 OR manager以上（CSV取込時）
-      allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid ||
-        (isManagerOrAbove() && request.resource.data.source == 'csv_import')
-      );
-      // 更新：本人（手動修正）OR manager以上（CSV取込上書き）
-      allow update: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid &&
-         request.resource.data.userId == request.auth.uid) ||
-        (isManagerOrAbove() && request.resource.data.source == 'csv_import')
-      );
+    match /productMasters/{productId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isExecutive();
+    }
+    match /userProductAssignments/{assignmentId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isManagerOrAbove();
       allow delete: if isExecutive();
     }
-
-    // ★ dailyKpiSummary（v4新規）— 商材別の全社合計
+    match /dailyKpi/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow delete: if isExecutive();
+    }
     match /dailyKpiSummary/{summaryId} {
       allow read: if isAuthenticated();
       allow create, update: if isManagerOrAbove();
       allow delete: if isExecutive();
     }
-
-    // ★ csvImportLogs（v4新規）— CSV取込履歴
-    match /csvImportLogs/{logId} {
-      // 全ログインユーザーが読取可
-      allow read: if isAuthenticated();
-      // 作成はmanager以上（importedByが自分のUIDと一致）
-      allow create: if isManagerOrAbove() &&
-        request.resource.data.importedBy == request.auth.uid;
-      // 更新はexecutiveのみ（手動修正用）
-      allow update: if isExecutive();
-      // 削除は禁止（履歴は永久保持）
+    match /kpiTargets/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow delete: if isExecutive();
+    }
+    match /reports/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow delete: if isExecutive();
+    }
+    match /dailyReports/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow delete: if isExecutive();
+    }
+    match /improveTasks/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.assignedBy == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow delete: if isExecutive();
+    }
+    match /educationRecords/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isExecutive();
+    }
+    match /training_records/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isManagerOrAbove();
+      allow delete: if isExecutive();
+    }
+    match /monthlyClose/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow create, update: if isExecutive();
       allow delete: if false;
     }
-
-    // ★ auditLogs
+    match /csvImportLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isManagerOrAbove();
+      allow update: if isExecutive();
+      allow delete: if false;
+    }
     match /auditLogs/{logId} {
       allow read: if isExecutive();
       allow create: if isAuthenticated();
       allow update, delete: if false;
     }
-
-    // kpiTargets
-    match /kpiTargets/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      allow update: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid &&
-         resource.data.status == 'pending' &&
-         request.resource.data.userId == request.auth.uid) ||
-        (isManagerOrAbove() &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['status', 'approvedBy', 'comment', 'updatedAt']))
-      );
-      allow delete: if isExecutive();
-    }
-
-    // weeklyReports
-    match /weeklyReports/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() &&
-        resource.data.userId == request.auth.uid &&
-        request.resource.data.userId == request.auth.uid;
-      allow delete: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isExecutive());
-    }
-
-    // educationRecords
-    match /educationRecords/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow create: if isManagerOrAbove() &&
-        request.resource.data.trainerId == request.auth.uid;
-      allow update: if isManagerOrAbove() &&
-        resource.data.trainerId == request.auth.uid;
-      allow delete: if isExecutive();
-    }
-
-    // improveTasks
-    match /improveTasks/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid ||
-         resource.data.assignedBy == request.auth.uid ||
-         isManagerOrAbove());
-      allow create: if isManagerOrAbove() &&
-        request.resource.data.assignedBy == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['status', 'result', 'updatedAt', 'comments'])) ||
-        resource.data.assignedBy == request.auth.uid ||
-        isExecutive()
-      );
-      allow delete: if isExecutive();
-    }
-
-    // aiAnalysis — フロント書込不可
-    match /aiAnalysis/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow write: if false;
-    }
-
-    // notifications — 既読のみ本人が更新可
     match /notifications/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
-      allow update: if isAuthenticated() &&
-        resource.data.userId == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create, delete: if false;
     }
-
-    // alerts — フロント書込不可
+    match /aiAnalysis/{docId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow write: if false;
+    }
     match /alerts/{docId} {
-      allow read: if isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || isManagerOrAbove());
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isManagerOrAbove());
       allow write: if false;
     }
   }

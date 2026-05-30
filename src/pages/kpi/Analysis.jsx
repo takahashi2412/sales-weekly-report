@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
 import { collection, getDocs, query, where, doc, getDoc } from 'firebase/firestore';
-import { TrendingUp, Users, Target, Calendar } from 'lucide-react';
+import { TrendingUp, Users, Target, Calendar, AlertCircle } from 'lucide-react';
 import Breadcrumb from '../../components/Breadcrumb';
 import { getVisibleUsers } from '../../utils/teamUtils';
 
-export default function KpiCompare() {
+export default function Analysis() {
   const { user } = useAuth();
   
   const [loading, setLoading] = useState(true);
@@ -48,6 +48,31 @@ export default function KpiCompare() {
     fetchMeta();
   }, [user]);
 
+  // Handle auto calculation of passedDays and fetching default workDays
+  useEffect(() => {
+    if (!selectedMonth) return;
+    const today = new Date();
+    const selDate = new Date(`${selectedMonth}-01`);
+    
+    let pDays = 0;
+    if (today.getFullYear() === selDate.getFullYear() && today.getMonth() === selDate.getMonth()) {
+      // Current month: calculate weekdays up to today
+      let d = new Date(selDate);
+      while (d <= today) {
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) pDays++; // skip Sun, Sat
+        d.setDate(d.getDate() + 1);
+      }
+      setPassedDays(pDays || 1);
+    } else if (selDate < today) {
+      // Past month
+      setPassedDays(businessDays); // assume all passed
+    } else {
+      // Future month
+      setPassedDays(1);
+    }
+  }, [selectedMonth]); // Wait, businessDays might change, but let's just trigger on selectedMonth
+
   useEffect(() => {
     if (loading || !selectedProduct || teamMembers.length === 0) return;
 
@@ -64,12 +89,17 @@ export default function KpiCompare() {
         const endStr = formatDateLocal(today);
         const startStr = formatDateLocal(pastDate);
 
-        const qRecent = query(
-          collection(db, 'dailyKpi'),
-          where('productId', '==', selectedProduct),
-          where('date', '>=', startStr),
-          where('date', '<=', endStr)
-        );
+        let qRecent;
+        if (user.role === 'leader') {
+          qRecent = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+        } else {
+          qRecent = query(
+            collection(db, 'dailyKpi'),
+            where('productId', '==', selectedProduct),
+            where('date', '>=', startStr),
+            where('date', '<=', endStr)
+          );
+        }
         const snapRecent = await getDocs(qRecent);
         
         const aggRecent = {};
@@ -79,6 +109,11 @@ export default function KpiCompare() {
 
         snapRecent.forEach(d => {
           const data = d.data();
+          if (user.role === 'leader') {
+            if (data.productId !== selectedProduct) return;
+            if (data.date < startStr || data.date > endStr) return;
+          }
+          
           if (aggRecent[data.userId]) {
             const tr = aggRecent[data.userId];
             tr.total += (data.totals?.total || 0);
@@ -90,69 +125,84 @@ export default function KpiCompare() {
         setCompareData(Object.values(aggRecent).sort((a,b) => b.total - a.total));
 
         // --- 2. 月末着地予測 ---
-        const monthStr = selectedMonth; // e.g. "2026-05"
+        const monthStr = selectedMonth;
         const startMonthStr = `${monthStr}-01`;
         const endMonthStr = `${monthStr}-31`;
         
-        const qMonth = query(
-          collection(db, 'dailyKpi'),
-          where('productId', '==', selectedProduct),
-          where('date', '>=', startMonthStr),
-          where('date', '<=', endMonthStr)
-        );
+        let qMonth;
+        if (user.role === 'leader') {
+          qMonth = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+        } else {
+          qMonth = query(
+            collection(db, 'dailyKpi'),
+            where('productId', '==', selectedProduct),
+            where('date', '>=', startMonthStr),
+            where('date', '<=', endMonthStr)
+          );
+        }
         const snapMonth = await getDocs(qMonth);
 
         // Fetch KGI Targets
         const kgiMap = {};
+        let maxWorkDays = 20;
         for (const m of teamMembers) {
           const docId = `${m.id}_${selectedProduct}_${monthStr.replace('-', '')}`;
           const kgiRef = doc(db, 'kpiTargets', docId);
           const kgiSnap = await getDoc(kgiRef);
-          if (kgiSnap.exists() && kgiSnap.data().status === 'approved') {
+          if (kgiSnap.exists() && (kgiSnap.data().status === 'approved' || kgiSnap.data().status === 'pending')) {
             const data = kgiSnap.data();
-            // KGIアポ目標 = 目標受注数 / 受注率 / 採用率 (概算)
-            // もしくは単純にデータがなければ0。
-            // K-03で目標受注数と各率が入力されるため、逆算して必要なアポ数を算出する
-            let targetAppoint = 0;
-            if (data.monthlyOrderTarget && data.orderRate && data.adoptionRate) {
-                targetAppoint = Math.ceil(data.monthlyOrderTarget / data.orderRate / data.adoptionRate);
-            }
-            kgiMap[m.id] = targetAppoint || 0;
+            const wDays = data.workDays || 20;
+            if (wDays > maxWorkDays) maxWorkDays = wDays;
+            
+            kgiMap[m.id] = {
+              targetOrder: data.monthlyOrderTarget || 0,
+              workDays: wDays
+            };
           } else {
-            kgiMap[m.id] = 0; 
+            kgiMap[m.id] = { targetOrder: 0, workDays: 20 }; 
           }
         }
-
+        
+        // If business days hasn't been manually tampered much, we can update it to the fetched KGI workdays
+        // But for simplicity, we just use the fetched workDays directly in calculations if possible
+        
         const aggMonth = {};
         teamMembers.forEach(m => {
           aggMonth[m.id] = { 
             name: m.name, 
-            kgiAppoint: kgiMap[m.id] || 0,
-            currentAppoint: 0 
+            kgiOrder: kgiMap[m.id]?.targetOrder || 0,
+            workDays: kgiMap[m.id]?.workDays || 20,
+            currentOrder: 0 
           };
         });
 
         snapMonth.forEach(d => {
           const data = d.data();
+          if (user.role === 'leader') {
+            if (data.productId !== selectedProduct) return;
+            if (data.date < startMonthStr || data.date > endMonthStr) return;
+          }
+          
           if (aggMonth[data.userId]) {
-            aggMonth[data.userId].currentAppoint += (data.totals?.appoint || 0);
+            // Using dailySummary.order for pace forecast
+            aggMonth[data.userId].currentOrder += (data.dailySummary?.order || 0);
           }
         });
 
         const proj = Object.values(aggMonth).map(d => {
-          const bDays = parseInt(businessDays, 10) || 20;
+          const bDays = parseInt(businessDays, 10) || d.workDays || 20;
           const pDays = parseInt(passedDays, 10) || 1;
           const rate = bDays / pDays;
           
-          const projected = Math.round(d.currentAppoint * rate);
+          const projected = Math.round(d.currentOrder * rate * 10) / 10; // 1 decimal for projection
           return {
             ...d,
-            projectedAppoint: projected,
-            diff: projected - d.kgiAppoint
+            projectedOrder: projected,
+            diff: (projected - d.kgiOrder).toFixed(1)
           };
         });
         
-        setProjectionData(proj.sort((a, b) => b.projectedAppoint - a.projectedAppoint));
+        setProjectionData(proj.sort((a, b) => b.projectedOrder - a.projectedOrder));
       } catch (e) {
         console.error(e);
       } finally {
@@ -161,7 +211,7 @@ export default function KpiCompare() {
     };
     
     fetchData();
-  }, [selectedProduct, dateRange, selectedMonth, businessDays, passedDays, teamMembers.length, loading]);
+  }, [selectedProduct, dateRange, selectedMonth, businessDays, passedDays, teamMembers.length]);
 
   if (loading && products.length === 0) {
     return <div style={{ padding: '3rem', textAlign: 'center' }}>読み込み中...</div>;
@@ -176,7 +226,7 @@ export default function KpiCompare() {
 
       <div className="page-header" style={{ marginBottom: '2rem', marginTop: '1rem' }}>
         <h1>KPI比較・着地予測 (K-05)</h1>
-        <p>メンバー間のKPI実績比較と、当月末の着地予測</p>
+        <p>メンバー間のKPI実績比較と、当月末の受注着地予測</p>
       </div>
 
       <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -246,7 +296,7 @@ export default function KpiCompare() {
         <div className="glass-panel" style={{ padding: '1.5rem', gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Target size={20} /> 月末着地予測 (アポ数)
+              <Target size={20} /> 月末着地予測 (受注数)
             </h3>
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <input 
@@ -279,32 +329,50 @@ export default function KpiCompare() {
               <thead>
                 <tr>
                   <th>メンバー名</th>
-                  <th>KGI目標</th>
-                  <th>現状実績</th>
-                  <th style={{ background: 'rgba(59,130,246,0.1)' }}>着地予測</th>
+                  <th>KGI目標(受注)</th>
+                  <th>現状実績(暫定)</th>
+                  <th style={{ background: 'rgba(16, 185, 129, 0.1)' }}>着地予測</th>
                   <th>目標との差分</th>
+                  <th>ステータス</th>
                 </tr>
               </thead>
               <tbody>
                 {projectionData.length === 0 ? (
-                  <tr><td colSpan="5" style={{ textAlign: 'center' }}>データがありません</td></tr>
+                  <tr><td colSpan="6" style={{ textAlign: 'center' }}>データがありません</td></tr>
                 ) : (
-                  projectionData.map((d, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 'bold' }}>{d.name}</td>
-                      <td>{d.kgiAppoint}</td>
-                      <td>{d.currentAppoint}</td>
-                      <td style={{ background: 'rgba(59,130,246,0.05)', fontWeight: 'bold' }}>
-                        {d.projectedAppoint} <TrendingUp size={14} style={{ marginLeft: '4px', color: 'var(--accent-primary)' }}/>
-                      </td>
-                      <td style={{ fontWeight: 'bold', color: d.diff >= 0 ? '#10b981' : '#ef4444' }}>
-                        {d.diff > 0 ? `+${d.diff}` : d.diff}
-                      </td>
-                    </tr>
-                  ))
+                  projectionData.map((d, i) => {
+                    const isBehind = parseFloat(d.diff) < 0;
+                    return (
+                      <tr key={i} style={isBehind ? { background: '#fef2f2' } : {}}>
+                        <td style={{ fontWeight: 'bold' }}>{d.name}</td>
+                        <td>{d.kgiOrder}</td>
+                        <td>{d.currentOrder}</td>
+                        <td style={{ background: 'rgba(16, 185, 129, 0.05)', fontWeight: 'bold', color: '#059669' }}>
+                          {d.projectedOrder} <TrendingUp size={14} style={{ marginLeft: '4px', color: '#10b981' }}/>
+                        </td>
+                        <td style={{ fontWeight: 'bold', color: isBehind ? '#ef4444' : '#10b981' }}>
+                          {!isBehind ? `+${d.diff}` : d.diff}
+                        </td>
+                        <td>
+                          {isBehind ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#ef4444', fontSize: '0.85rem', fontWeight: 'bold', background: '#fee2e2', padding: '2px 8px', borderRadius: '12px' }}>
+                              <AlertCircle size={14} /> ペース遅れ
+                            </span>
+                          ) : (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '0.85rem', fontWeight: 'bold', background: '#d1fae5', padding: '2px 8px', borderRadius: '12px' }}>
+                              順調
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
+          </div>
+          <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            ※ 着地予測 ＝ (現状実績 ÷ 経過日数) × 稼働日数。受注数は日報(K-02)で入力された暫定値を元に計算しています。
           </div>
         </div>
       </div>

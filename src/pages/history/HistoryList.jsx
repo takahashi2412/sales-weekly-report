@@ -19,20 +19,22 @@ export default function HistoryList() {
         return;
       }
       try {
-        const q = query(
-          collection(db, 'reports'),
-          where('userId', '==', user.uid)
-        );
+        let q;
+        if (user.role === 'leader') {
+          q = query(collection(db, 'reports'), where('userId', '==', user.uid));
+        } else {
+          q = query(collection(db, 'reports'), orderBy('date', 'desc'), limit(50));
+        }
         const querySnapshot = await getDocs(q);
-        const reports = [];
-        querySnapshot.forEach((doc) => {
-          reports.push({ id: doc.id, ...doc.data() });
-        });
+
+        let list = [];
+        querySnapshot.forEach(d => list.push({ id: d.id, ...d.data() }));
+
+        if (user.role === 'leader') {
+          list.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        }
         
-        // updatedAtやdateで降順ソート
-        reports.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        
-        setHistoryData(reports);
+        setHistoryData(list);
       } catch (error) {
         console.error("Error fetching history:", error);
       } finally {

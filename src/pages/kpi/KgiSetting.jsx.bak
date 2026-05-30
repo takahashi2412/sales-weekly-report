@@ -1,0 +1,271 @@
+import { useState, useEffect } from 'react';
+import { db } from '../../firebase';
+import { collection, doc, setDoc, getDocs, updateDoc, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
+import { useAuth } from '../../context/AuthContext';
+import { Target, CheckCircle, XCircle, Send, AlertTriangle } from 'lucide-react';
+
+export default function KgiSetting() {
+  const { user, isManagerOrAbove } = useAuth();
+  
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pendingList, setPendingList] = useState([]);
+
+  // KGI Form State
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [productId, setProductId] = useState('');
+  const [rates, setRates] = useState({ appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 });
+
+  const fetchProducts = async () => {
+    const snap = await getDocs(collection(db, 'productMasters'));
+    const list = [];
+    snap.forEach(d => {
+      if (d.data().isActive !== false) list.push(d.data());
+    });
+    setProducts(list);
+    
+    if (!productId && list.length > 0) {
+      const initProduct = user?.currentProductId || list[0].productId;
+      setProductId(initProduct);
+      applyDefaultRates(list, initProduct);
+    }
+  };
+
+  const applyDefaultRates = (productList, pId) => {
+    const p = productList.find(x => x.productId === pId);
+    if (p && p.conversionRates && p.conversionRates[user.role]) {
+      setRates(p.conversionRates[user.role]);
+    } else {
+      setRates({ appointRate: 0, adoptionRate: 0, orderRate: 0, monthlyOrderTarget: 0 });
+    }
+  };
+
+  const fetchPending = async () => {
+    if (!isManagerOrAbove) return;
+    try {
+      const q = query(collection(db, 'kpiTargets'), where('status', '==', 'pending'));
+      const snap = await getDocs(q);
+      const list = [];
+      snap.forEach(d => list.push({ _id: d.id, ...d.data(), commentInput: '' }));
+      setPendingList(list);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+    fetchPending();
+  }, [user]);
+
+  const handleProductChange = (e) => {
+    const pId = e.target.value;
+    setProductId(pId);
+    applyDefaultRates(products, pId);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const docId = `${user.uid}_${productId}_${month.replace('-', '')}`;
+      await setDoc(doc(db, 'kpiTargets', docId), {
+        userId: user.uid,
+        userName: user.displayName || '蜷咲┌縺・,
+        productId,
+        targetMonth: month,
+        status: 'pending',
+        appointRate: parseFloat(rates.appointRate),
+        adoptionRate: parseFloat(rates.adoptionRate),
+        orderRate: parseFloat(rates.orderRate),
+        monthlyOrderTarget: parseFloat(rates.monthlyOrderTarget),
+        comment: '',
+        approvedBy: null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      alert('KGI逶ｮ讓吶ｒ逕ｳ隲九＠縺ｾ縺励◆・√・繝阪・繧ｸ繝｣繝ｼ縺ｮ謇ｿ隱阪ｒ縺雁ｾ・■縺上□縺輔＞縲・);
+    } catch (error) {
+      console.error(error);
+      alert('逕ｳ隲九↓螟ｱ謨励＠縺ｾ縺励◆縲・);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 謇ｿ隱・蟾ｮ謌ｻ縺励・ hasOnly(['status','approvedBy','comment','updatedAt']) 縺ｫ蜷郁・縺輔○繧・
+  const handleApproval = async (targetId, isApprove, comment) => {
+    if (!isApprove && !comment) {
+      alert('蟾ｮ謌ｻ縺励・蝣ｴ蜷医・繧ｳ繝｡繝ｳ繝茨ｼ育炊逕ｱ・峨ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞縲・);
+      return;
+    }
+    
+    try {
+      const status = isApprove ? 'approved' : 'rejected';
+      await updateDoc(doc(db, 'kpiTargets', targetId), {
+        status,
+        approvedBy: user.uid,
+        comment: comment || '',
+        updatedAt: serverTimestamp()
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: isApprove ? 'kgiApprove' : 'kgiReject',
+        executedBy: {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || user.name || '',
+          role: user.role || ''
+        },
+        target: {
+          type: 'kpi',
+          id: targetId,
+          name: 'KGI逕ｳ隲・
+        },
+        changes: {
+          before: { status: 'pending' },
+          after: { status, comment: comment || '' }
+        },
+        timestamp: serverTimestamp()
+      });
+
+      alert(isApprove ? '謇ｿ隱阪＠縺ｾ縺励◆縲・ : '蟾ｮ縺玲綾縺励∪縺励◆縲・);
+      fetchPending();
+    } catch (e) {
+      console.error(e);
+      alert('謫堺ｽ懊↓螟ｱ謨励＠縺ｾ縺励◆縲よｨｩ髯舌∪縺溘・繝ｫ繝ｼ繝ｫ繧堤｢ｺ隱阪＠縺ｦ縺上□縺輔＞縲・);
+    }
+  };
+
+  return (
+    <div className="page-container" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
+      <div className="page-header" style={{ marginBottom: '2rem' }}>
+        <h1>KGI繝ｻKPI譛域ｬ｡險ｭ螳・(K-03)</h1>
+        <p>譛磯俣縺ｮ逶ｮ讓吝､・・GI・峨ｒ險ｭ螳壹＠縲∵価隱阪ｒ蜿励￠縺ｾ縺・/p>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
+        <h2><Target size={20} style={{ marginRight: '0.5rem', verticalAlign: 'middle' }} /> 縺ゅ↑縺溘・KGI險ｭ螳夲ｼ育筏隲具ｼ・/h2>
+        <form onSubmit={handleSubmit} style={{ marginTop: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '2rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+              <label>蟇ｾ雎｡譛・/label>
+              <input 
+                type="month" 
+                value={month} 
+                onChange={e => setMonth(e.target.value)} 
+                required
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1, minWidth: '200px' }}>
+              <label>蟇ｾ雎｡蝠・攝</label>
+              <select 
+                value={productId} 
+                onChange={handleProductChange}
+                required
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+              >
+                {products.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '8px', marginBottom: '2rem' }}>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+              窶ｻ蝠・攝繝槭せ繧ｿ縺ｮ蝓ｺ貅門､・・user.role}・峨′蛻晄悄蜈･蜉帙＆繧後※縺・∪縺吶ょｿ・ｦ√↓蠢懊§縺ｦ菫ｮ豁｣縺励※縺上□縺輔＞縲・
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
+              <div className="form-group">
+                <label>繧｢繝晉紫</label>
+                <input type="number" step="0.001" value={rates.appointRate} onChange={e => setRates({...rates, appointRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>謗｡逕ｨ邇・/label>
+                <input type="number" step="0.01" value={rates.adoptionRate} onChange={e => setRates({...rates, adoptionRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>蜿玲ｳｨ邇・/label>
+                <input type="number" step="0.01" value={rates.orderRate} onChange={e => setRates({...rates, orderRate: e.target.value})} />
+              </div>
+              <div className="form-group">
+                <label>譛域ｬ｡逶ｮ讓吝女豕ｨ謨ｰ</label>
+                <input type="number" step="1" value={rates.monthlyOrderTarget} onChange={e => setRates({...rates, monthlyOrderTarget: e.target.value})} />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" className="btn btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+            <Send size={18} style={{ marginRight: '0.5rem' }} /> {loading ? '逕ｳ隲倶ｸｭ...' : '謇ｿ隱阪ｒ繝ｪ繧ｯ繧ｨ繧ｹ繝医☆繧・}
+          </button>
+        </form>
+      </div>
+
+      {isManagerOrAbove && (
+        <div className="glass-panel" style={{ padding: '2rem' }}>
+          <h2><AlertTriangle size={20} style={{ marginRight: '0.5rem', color: '#f59e0b', verticalAlign: 'middle' }} /> 謇ｿ隱榊ｾ・■縺ｮKGI荳隕ｧ</h2>
+          
+          {pendingList.length === 0 ? (
+            <p style={{ marginTop: '1.5rem', color: 'var(--text-secondary)' }}>迴ｾ蝨ｨ謇ｿ隱榊ｾ・■縺ｮ逕ｳ隲九・縺ゅｊ縺ｾ縺帙ｓ縲・/p>
+          ) : (
+            <div className="table-container" style={{ marginTop: '1.5rem' }}>
+              <table className="reports-table">
+                <thead>
+                  <tr>
+                    <th>逕ｳ隲玖・/th>
+                    <th>蟇ｾ雎｡譛・/th>
+                    <th>蝠・攝</th>
+                    <th>險ｭ螳壼､ (繧｢/謗｡/蜿・逶ｮ讓・</th>
+                    <th>繧ｳ繝｡繝ｳ繝・/ 繧｢繧ｯ繧ｷ繝ｧ繝ｳ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingList.map((t, i) => (
+                    <tr key={t._id}>
+                      <td style={{ fontWeight: 'bold' }}>{t.userName || '荳肴・'}</td>
+                      <td>{t.targetMonth}</td>
+                      <td>{products.find(p => p.productId === t.productId)?.productName || t.productId}</td>
+                      <td style={{ fontSize: '0.9rem' }}>
+                        {t.appointRate} / {t.adoptionRate} / {t.orderRate} / {t.monthlyOrderTarget}莉ｶ
+                      </td>
+                      <td style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input 
+                          type="text" 
+                          placeholder="蟾ｮ謌ｻ縺礼炊逕ｱ縺ｪ縺ｩ..." 
+                          value={t.commentInput}
+                          onChange={(e) => {
+                            const newList = [...pendingList];
+                            newList[i].commentInput = e.target.value;
+                            setPendingList(newList);
+                          }}
+                          style={{ padding: '0.4rem', width: '150px' }}
+                        />
+                        <button 
+                          className="btn btn-primary btn-sm" 
+                          style={{ padding: '0.4rem', background: '#10b981', borderColor: '#10b981' }}
+                          onClick={() => handleApproval(t._id, true, t.commentInput)}
+                        >
+                          <CheckCircle size={14} /> 謇ｿ隱・
+                        </button>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '0.4rem', color: '#ef4444', borderColor: '#ef4444' }}
+                          onClick={() => handleApproval(t._id, false, t.commentInput)}
+                        >
+                          <XCircle size={14} /> 蟾ｮ謌ｻ縺・
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

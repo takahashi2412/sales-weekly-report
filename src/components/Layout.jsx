@@ -205,6 +205,15 @@ export default function Layout() {
                 <ClipboardList size={20} />
                 <span className="nav-label">監査ログ</span>
               </Link>
+              <Link 
+                to="/settings/monthly-close" 
+                className={`nav-item ${location.pathname.startsWith('/settings/monthly-close') ? 'active' : ''}`}
+                title="月次締め管理"
+                onClick={closeMobileMenu}
+              >
+                <FileText size={20} />
+                <span className="nav-label">月次締め管理</span>
+              </Link>
             </>
           )}
 

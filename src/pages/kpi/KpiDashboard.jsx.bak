@@ -1,0 +1,301 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
+import { BarChart3, Target, Calendar, TrendingUp, Search, AlertCircle } from 'lucide-react';
+import { getVisibleUserIds } from '../../utils/teamUtils';
+import '../Dashboard.css';
+
+export default function KpiDashboard() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
+  
+  const [selectedProduct, setSelectedProduct] = useState('all');
+  const [viewScope, setViewScope] = useState(() => {
+    if (user.role === 'executive') return 'company';
+    if (user.role === 'manager') return 'team';
+    return 'personal';
+  });
+
+  const [activeTab, setActiveTab] = useState('progress'); // 'progress' | 'analysis' | 'history'
+
+  const [dashboardData, setDashboardData] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const prodSnap = await getDocs(collection(db, 'productMasters'));
+        const prodList = [];
+        prodSnap.forEach(d => {
+          if (d.data().isActive !== false) prodList.push(d.data());
+        });
+        setProducts(prodList);
+
+        if (viewScope === 'company' && user.role === 'executive') {
+          // Company level -> use dailyKpiSummary
+          const sumQuery = query(collection(db, 'dailyKpiSummary'), orderBy('date', 'desc'), limit(100));
+          const sumSnap = await getDocs(sumQuery);
+          const sumList = [];
+          sumSnap.forEach(d => sumList.push(d.data()));
+          setDashboardData(sumList);
+        } else {
+          // Team or Personal -> fetch dailyKpi and aggregate
+          const visibleIds = await getVisibleUserIds(
+            viewScope === 'personal' ? { ...user, role: 'leader' } : user
+          );
+          
+          if (visibleIds.length === 0) {
+            setDashboardData([]);
+            return;
+          }
+
+          let kpiQuery;
+          if (user.role === 'leader') {
+            kpiQuery = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+          } else {
+            kpiQuery = query(collection(db, 'dailyKpi'), orderBy('date', 'desc'), limit(500));
+          }
+          const kpiSnap = await getDocs(kpiQuery);
+          
+          const aggregated = {};
+          
+          kpiSnap.forEach(d => {
+            const data = d.data();
+            if (visibleIds.includes(data.userId)) {
+              const key = `${data.date}_${data.productId}`;
+              if (!aggregated[key]) {
+                aggregated[key] = {
+                  date: data.date,
+                  productId: data.productId,
+                  totals: { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 }
+                };
+              }
+              const aggTotals = aggregated[key].totals;
+              const dTotals = data.totals || {};
+              aggTotals.total += (dTotals.total || 0);
+              aggTotals.actual += (dTotals.actual || 0);
+              aggTotals.recall += (dTotals.recall || 0);
+              aggTotals.owner += (dTotals.owner || 0);
+              aggTotals.prospect += (dTotals.prospect || 0);
+              aggTotals.appoint += (dTotals.appoint || 0);
+            }
+          });
+
+          // Sort by date desc
+          const sorted = Object.values(aggregated).sort((a, b) => b.date.localeCompare(a.date));
+          setDashboardData(sorted);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [viewScope, user]);
+
+  const filteredSummaries = selectedProduct === 'all' 
+    ? dashboardData 
+    : dashboardData.filter(s => s.productId === selectedProduct);
+
+  const aggregateTotals = () => {
+    const agg = { total: 0, actual: 0, recall: 0, owner: 0, prospect: 0, appoint: 0 };
+    filteredSummaries.forEach(s => {
+      Object.keys(agg).forEach(k => {
+        agg[k] += s.totals[k] || 0;
+      });
+    });
+    return agg;
+  };
+
+  const totals = aggregateTotals();
+
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr.length !== 8) return dateStr;
+    return `${dateStr.substring(0,4)}/${dateStr.substring(4,6)}/${dateStr.substring(6,8)}`;
+  };
+
+  return (
+    <div className="page-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <div className="page-header" style={{ marginBottom: '2rem' }}>
+        <h1>KPI繝繝・す繝･繝懊・繝・(K-01)</h1>
+        <p>蜷・ｨｮ繝・・繧ｿ縺九ｉ迥ｶ豕√ｒ謚頑升縺励√・繝医Ν繝阪ャ繧ｯ繧堤音螳壹＠縺ｾ縺・/p>
+      </div>
+
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontWeight: 'bold' }}>陦ｨ遉ｺ遽・峇:</label>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {user.role === 'executive' && (
+              <button 
+                onClick={() => setViewScope('company')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: viewScope === 'company' ? 'var(--accent-primary)' : 'transparent', color: viewScope === 'company' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}
+              >
+                蜈ｨ遉ｾ
+              </button>
+            )}
+            {(user.role === 'manager' || user.role === 'executive') && (
+              <button 
+                onClick={() => setViewScope('team')}
+                style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: viewScope === 'team' ? 'var(--accent-primary)' : 'transparent', color: viewScope === 'team' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}
+              >
+                閾ｪ繝√・繝
+              </button>
+            )}
+            <button 
+              onClick={() => setViewScope('personal')}
+              style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: viewScope === 'personal' ? 'var(--accent-primary)' : 'transparent', color: viewScope === 'personal' ? 'white' : 'var(--text-primary)', cursor: 'pointer' }}
+            >
+              蛟倶ｺｺ
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontWeight: 'bold' }}>蝠・攝繝輔ぅ繝ｫ繧ｿ繝ｼ:</label>
+          <select 
+            value={selectedProduct} 
+            onChange={e => setSelectedProduct(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          >
+            <option value="all">蜈ｨ蝠・攝蜷郁ｨ・/option>
+            {products.map(p => <option key={p.productId} value={p.productId}>{p.productName}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', borderBottom: '2px solid var(--border-color)', marginBottom: '2rem' }}>
+        <button 
+          onClick={() => setActiveTab('progress')}
+          style={{ padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: activeTab === 'progress' ? '3px solid var(--accent-primary)' : '3px solid transparent', color: activeTab === 'progress' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <Target size={20} /> KPI陦ｨ險倥・騾ｲ謐・        </button>
+        <button 
+          onClick={() => setActiveTab('analysis')}
+          style={{ padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: activeTab === 'analysis' ? '3px solid var(--accent-primary)' : '3px solid transparent', color: activeTab === 'analysis' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <AlertCircle size={20} /> 蛻・梵繝ｻ蝠城｡檎せ
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          style={{ padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 'bold', background: 'none', border: 'none', borderBottom: activeTab === 'history' ? '3px solid var(--accent-primary)' : '3px solid transparent', color: activeTab === 'history' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <Calendar size={20} /> 譌･譎よ欠螳・        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem' }}>隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
+      ) : (
+        <>
+          {activeTab === 'progress' && (
+            <div className="animate-fade-in">
+              <div className="dashboard-grid" style={{ marginBottom: '2rem' }}>
+                <div className="stat-card glass-panel" style={{ padding: '1.5rem' }}>
+                  <div className="stat-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
+                    <Target size={20} />
+                    <h3>蜷郁ｨ域楔髮ｻ謨ｰ</h3>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem' }}>
+                    {totals.total.toLocaleString()} <span style={{ fontSize: '1rem', fontWeight: 'normal' }}>莉ｶ</span>
+                  </div>
+                </div>
+                
+                <div className="stat-card glass-panel" style={{ padding: '1.5rem' }}>
+                  <div className="stat-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
+                    <BarChart3 size={20} />
+                    <h3>譛牙柑騾夊ｩｱ / 諡・ｽ楢・夊ｩｱ</h3>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '1rem' }}>
+                    {totals.actual.toLocaleString()} <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>/ {totals.owner.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="stat-card glass-panel" style={{ padding: '1.5rem', borderLeft: '4px solid #10b981' }}>
+                  <div className="stat-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
+                    <TrendingUp size={20} style={{ color: '#10b981' }} />
+                    <h3>隕玖ｾｼ謨ｰ / 繧｢繝晄焚</h3>
+                  </div>
+                  <div className="stat-value" style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '1rem', color: '#10b981' }}>
+                    {totals.prospect.toLocaleString()} <span style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>/ {totals.appoint.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'analysis' && (
+            <div className="animate-fade-in">
+              <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
+                <AlertCircle size={48} style={{ color: '#f59e0b', margin: '0 auto 1rem auto' }} />
+                <h3>繝懊ヨ繝ｫ繝阪ャ繧ｯ縺ｮ迚ｹ螳壹・謾ｹ蝟・い繧ｯ繧ｷ繝ｧ繝ｳ</h3>
+                <p style={{ color: 'var(--text-secondary)', marginTop: '1rem' }}>
+                  迴ｾ蝨ｨ闢・ｩ阪＆繧後◆繝・・繧ｿ繧偵ｂ縺ｨ縺ｫ縲、I縺ｫ繧医ｋ蛻・梵邨先棡繧・音螳壹＆繧後◆蝠城｡檎せ縺後％縺薙↓陦ｨ遉ｺ縺輔ｌ縺ｾ縺吶・                  <br />・遺ｻ蛻・梵繧ｨ繝ｳ繧ｸ繝ｳ縺ｮ邨ｱ蜷亥ｾ後↓隧ｳ邏ｰ繝・・繧ｿ縺瑚｡ｨ遉ｺ縺輔ｌ縺ｾ縺呻ｼ・                </p>
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', marginTop: '2rem' }}>
+                  <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #fcd34d', flex: 1, maxWidth: '300px' }}>
+                    <h4 style={{ color: '#d97706', marginBottom: '0.5rem' }}>迴ｾ蝨ｨ縺ｮ繝懊ヨ繝ｫ繝阪ャ繧ｯ</h4>
+                    <p style={{ fontWeight: 'bold' }}>繧｢繝晉紫菴惹ｸ・(蜈磯ｱ豈・-2.1%)</p>
+                  </div>
+                  <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #6ee7b7', flex: 1, maxWidth: '300px' }}>
+                    <h4 style={{ color: '#059669', marginBottom: '0.5rem' }}>謗ｨ螂ｨ繧｢繧ｯ繧ｷ繝ｧ繝ｳ</h4>
+                    <p style={{ fontWeight: 'bold' }}>蛻晄悄繝医・繧ｯ縺ｮ蛻・ｊ霑斐＠蠑ｷ蛹也比ｿｮ</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div className="animate-fade-in">
+              <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Calendar size={18} /> 繝・・繧ｿ荳隕ｧ・域律譎よ欠螳夲ｼ・                  </h3>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <Search size={18} style={{ color: 'var(--text-secondary)' }} />
+                    <input type="month" style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }} />
+                  </div>
+                </div>
+                <div className="table-container">
+                  <table className="reports-table">
+                    <thead>
+                      <tr>
+                        <th>譌･莉・/th>
+                        <th>蝠・攝</th>
+                        <th>譫ｶ髮ｻ謨ｰ</th>
+                        <th>譛牙柑騾夊ｩｱ</th>
+                        <th>蜀阪さ繝ｼ繝ｫ</th>
+                        <th>諡・ｽ楢・夊ｩｱ</th>
+                        <th>隕玖ｾｼ謨ｰ</th>
+                        <th>繧｢繝晄焚</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSummaries.length === 0 ? (
+                        <tr><td colSpan="8" style={{ textAlign: 'center' }}>繝・・繧ｿ縺後≠繧翫∪縺帙ｓ</td></tr>
+                      ) : (
+                        filteredSummaries.map((s, i) => (
+                          <tr key={i}>
+                            <td style={{ fontWeight: 'bold' }}>{formatDate(s.date)}</td>
+                            <td>{products.find(p => p.productId === s.productId)?.productName || s.productId}</td>
+                            <td>{s.totals?.total || 0}</td>
+                            <td>{s.totals?.actual || 0}</td>
+                            <td>{s.totals?.recall || 0}</td>
+                            <td>{s.totals?.owner || 0}</td>
+                            <td>{s.totals?.prospect || 0}</td>
+                            <td>{s.totals?.appoint || 0}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

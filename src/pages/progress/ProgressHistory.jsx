@@ -14,14 +14,20 @@ export default function ProgressHistory() {
     const fetchHistory = async () => {
       try {
         let q;
-        if (isManagerOrAbove) {
-          q = query(collection(db, 'kpiTargets'), orderBy('targetMonth', 'desc'), limit(50));
+        if (user.role === 'leader') {
+          q = query(collection(db, 'kpiTargets'), where('userId', '==', user.uid));
         } else {
-          q = query(collection(db, 'kpiTargets'), where('userId', '==', user.uid), orderBy('targetMonth', 'desc'), limit(20));
+          q = query(collection(db, 'kpiTargets'), orderBy('targetMonth', 'desc'), limit(50));
         }
         const snap = await getDocs(q);
-        const list = [];
+        let list = [];
         snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        
+        if (user.role === 'leader') {
+          list.sort((a, b) => b.targetMonth.localeCompare(a.targetMonth));
+          list = list.slice(0, 20);
+        }
+        
         setHistory(list);
       } catch (e) {
         console.error(e);

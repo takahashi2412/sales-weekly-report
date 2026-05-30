@@ -250,6 +250,67 @@ export default function WeeklyForm({ injectedReport, isHistoryDetail }) {
     }
   };
 
+  const [teamMembers, setTeamMembers] = useState([]);
+
+  useEffect(() => {
+    import('../utils/teamUtils').then(({ getVisibleUsers }) => {
+      getVisibleUsers(user).then(setTeamMembers).catch(console.error);
+    }).catch(console.error);
+  }, [user]);
+
+  const handleImportSingleMember = async (index, memberId, memberName) => {
+    if (!formData.startDate) {
+      alert("基本設定で「対象週（開始日）」を設定してください。");
+      return;
+    }
+    try {
+      const startObj = new Date(formData.startDate);
+      const startStr = startObj.toISOString().split('T')[0];
+      const endObj = new Date(startObj);
+      endObj.setDate(endObj.getDate() + 6);
+      const endStr = endObj.toISOString().split('T')[0];
+
+      const q = query(
+        collection(db, 'training_records'),
+        where('managerId', '==', user.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      let latestRecord = null;
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.memberId === memberId && data.date >= startStr && data.date <= endStr) {
+          if (!latestRecord || data.date > latestRecord.date) {
+            latestRecord = data;
+          }
+        }
+      });
+
+      if (latestRecord) {
+         const newMembers = [...formData.members];
+         newMembers[index] = {
+            ...newMembers[index],
+            name: memberName,
+            item: latestRecord.trainingType || '',
+            kpi: latestRecord.step1 || '',
+            problem: latestRecord.step2 || '',
+            cause: latestRecord.step3 || '',
+            action: latestRecord.step4 || '',
+            result: latestRecord.step5 || '',
+            reproducible: (latestRecord.step6 && latestRecord.step6.trim() !== '') ? 'あり' : 'なし',
+            noReproReason: (latestRecord.step6 && latestRecord.step6.trim() === '') ? '未入力' : ''
+         };
+         setFormData({ ...formData, members: newMembers });
+      } else {
+         handleMemberChange(index, 'name', memberName);
+         alert("この期間の教育進捗データが見つかりませんでした。名前のみ入力しました。");
+      }
+    } catch (e) {
+      console.error(e);
+      handleMemberChange(index, 'name', memberName);
+    }
+  };
+
   // --- Step 0: 基本設定 ---
   const renderStep0 = () => (
     <div className="step-content animate-fade-in" style={{ textAlign: 'center' }}>
@@ -532,22 +593,40 @@ export default function WeeklyForm({ injectedReport, isHistoryDetail }) {
           className="btn btn-primary" 
           style={{ background: 'linear-gradient(135deg, #FF003D 0%, #ff4d79 100%)', border: 'none', boxShadow: '0 4px 15px rgba(255, 0, 61, 0.3)' }}
         >
-          {isImporting ? '取り込み中...' : '✨ 教育進捗（トラッカー）から自動取り込み'}
+          {isImporting ? '取り込み中...' : '✨ 教育進捗（トラッカー）から一括取り込み'}
         </button>
       </div>
       
       {formData.members.map((member, index) => (
         <div key={index} className="calculation-box mb-2" style={{marginBottom: '2rem'}}>
           <div className="form-row" style={{borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1rem'}}>
-            <div className="form-group">
-              <label>担当者名</label>
-              <input type="text" value={member.name} onChange={(e) => handleMemberChange(index, 'name', e.target.value)} placeholder="例: 佐藤 花子" />
+            <div className="form-group" style={{ flex: 1.5 }}>
+              <label>担当者名（選択すると教育進捗データを取得します）</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {teamMembers.length > 0 && (
+                  <select 
+                    value=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      const selectedMemberId = e.target.selectedOptions[0].getAttribute('data-id');
+                      handleImportSingleMember(index, selectedMemberId, e.target.value);
+                    }}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="">部下を選択して取込...</option>
+                    {teamMembers.filter(tm => tm.id !== user.uid).map(tm => (
+                      <option key={tm.id} value={tm.name} data-id={tm.id}>{tm.name}</option>
+                    ))}
+                  </select>
+                )}
+                <input type="text" value={member.name} onChange={(e) => handleMemberChange(index, 'name', e.target.value)} placeholder="手入力も可" style={{ flex: 1 }} />
+              </div>
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1 }}>
               <label>担当項目</label>
               <input type="text" value={member.item} onChange={(e) => handleMemberChange(index, 'item', e.target.value)} placeholder="例: 新規架電" />
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ flex: 1 }}>
               <label>育成ステージ</label>
               <select value={member.stage} onChange={(e) => handleMemberChange(index, 'stage', e.target.value)}>
                 <option value="STAGE 1">STAGE 1 (報告者)</option>

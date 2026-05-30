@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { History, FileText, CheckCircle, Clock } from 'lucide-react';
 import '../Dashboard.css';
@@ -17,16 +17,24 @@ export default function DailyHistory() {
       setLoading(true);
       try {
         let q;
-        if (filterType === 'me' || !isManagerOrAbove) {
-          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid), orderBy('date', 'desc'));
+        if (user.role === 'leader') {
+          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid));
         } else {
-          // Simplification for mock: fetch all and filter by team logic if needed
-          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'));
+          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
+        }
+        const snap = await getDocs(q);
+
+        let list = [];
+        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+
+        if (user.role === 'leader') {
+          list.sort((a, b) => b.date.localeCompare(a.date));
         }
         
-        const snap = await getDocs(q);
-        const list = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        // Very basic team filter logic (in real app, we should query by teamId)
+        if (filterType === 'me' && user.role !== 'leader') {
+          list = list.filter(r => r.userId === user.uid);
+        }
         
         // Very basic team filter logic (in real app, we should query by teamId)
         setReports(list);

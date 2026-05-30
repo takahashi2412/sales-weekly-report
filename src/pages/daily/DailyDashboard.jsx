@@ -18,14 +18,20 @@ export default function DailyDashboard() {
     const fetchRecent = async () => {
       try {
         let q;
-        if (isManagerOrAbove) {
-          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
+        if (user.role === 'leader') {
+          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid));
         } else {
-          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid), orderBy('date', 'desc'), limit(10));
+          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
         }
         const snap = await getDocs(q);
-        const list = [];
+        let list = [];
         snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        
+        if (user.role === 'leader') {
+          list.sort((a, b) => b.date.localeCompare(a.date));
+          list = list.slice(0, 10);
+        }
+        
         setReports(list);
       } catch (e) {
         console.error(e);

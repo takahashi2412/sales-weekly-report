@@ -10,6 +10,7 @@ import ProductManagement from './pages/ProductManagement';
 import WeeklyForm from './pages/WeeklyForm';
 import ReportViewer from './pages/ReportViewer';
 import AuditLog from './pages/settings/AuditLog';
+import MonthlyClose from './pages/settings/MonthlyClose';
 
 import TrainingList from './pages/training/TrainingList';
 import TrainingDetail from './pages/training/TrainingDetail';
@@ -23,7 +24,7 @@ import KgiSetting from './pages/kpi/KgiSetting';
 import KpiDashboard from './pages/kpi/KpiDashboard';
 import KpiHistory from './pages/kpi/KpiHistory';
 import KpiDetail from './pages/kpi/KpiDetail';
-import KpiCompare from './pages/kpi/KpiCompare';
+import Analysis from './pages/kpi/Analysis';
 
 import DailyDashboard from './pages/daily/DailyDashboard';
 import DailyInput from './pages/daily/DailyInput';
@@ -138,7 +139,7 @@ function AppRoutes() {
           <Route path="kpi/setting" element={<KgiSetting />} />
           <Route path="kpi/detail" element={<KpiDetail />} />
           <Route path="kpi/detail/:id" element={<KpiDetail />} />
-          <Route path="kpi/compare" element={<KpiCompare />} />
+          <Route path="kpi/analysis" element={<Analysis />} />
 
           <Route path="daily" element={<DailyDashboard />} />
           <Route path="daily/new" element={<DailyInput />} />
@@ -182,6 +183,7 @@ function AppRoutes() {
             <Route path="teams" element={<TeamManagement />} />
             <Route path="products" element={<ProductManagement />} />
             <Route path="settings/audit" element={<AuditLog />} />
+            <Route path="settings/monthly-close" element={<MonthlyClose />} />
           </Route>
 
           {/* Routes for Everyone (leader, manager, executive) */}

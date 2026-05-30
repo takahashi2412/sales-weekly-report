@@ -1,0 +1,181 @@
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebase';
+import { collection, getDocs, query, orderBy, limit, where } from 'firebase/firestore';
+import { History, FileText, Database, Users, Download } from 'lucide-react';
+import { getVisibleUsers } from '../../utils/teamUtils';
+import CsvExportModal from '../../components/CsvExportModal';
+import '../Dashboard.css';
+
+export default function KpiHistory() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState('all');
+  const [kpiList, setKpiList] = useState([]);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const prodSnap = await getDocs(collection(db, 'productMasters'));
+        const prodList = [];
+        prodSnap.forEach(d => {
+          if (d.data().isActive !== false) prodList.push(d.data());
+        });
+        setProducts(prodList);
+
+        const visibleUsers = await getVisibleUsers(user);
+        setTeamMembers(visibleUsers);
+
+        let kpiQuery;
+        if (user.role === 'leader') {
+          // 蜴ｳ蟇・↑繝ｫ繝ｼ繝ｫ荳九〒縺ｯwhere蜿･縺悟ｿ・・
+          kpiQuery = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+        } else {
+          kpiQuery = query(collection(db, 'dailyKpi'), orderBy('date', 'desc'), limit(500));
+        }
+        const kpiSnap = await getDocs(kpiQuery);
+        const kpis = [];
+        const visibleIds = visibleUsers.map(u => u.id);
+        
+        kpiSnap.forEach(d => {
+          const data = d.data();
+          if (visibleIds.includes(data.userId)) {
+            const member = visibleUsers.find(u => u.id === data.userId);
+            kpis.push({ id: d.id, userName: member?.name || '荳肴・', ...data });
+          }
+        });
+        
+        // 繝ｭ繝ｼ繧ｫ繝ｫ縺ｧ譌･莉倬剄鬆・↓繧ｽ繝ｼ繝茨ｼ・eader縺ｮ蝣ｴ蜷・rderBy繧貞､悶＠縺ｦ縺・ｋ縺溘ａ・・
+        kpis.sort((a, b) => b.date.localeCompare(a.date));
+        
+        setKpiList(kpis);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [user]);
+
+  const SourceBadge = ({ source }) => {
+    if (source === 'manual') {
+      return (
+        <span style={{ background: '#f59e0b', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+          <FileText size={12} /> 謇句虚蜈･蜉・
+        </span>
+      );
+    }
+    return (
+      <span style={{ background: '#3b82f6', color: '#fff', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+        <Database size={12} /> CSV蜿冶ｾｼ
+      </span>
+    );
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    if (d.includes('-')) return d.replace(/-/g, '/');
+    if (d.length === 8) return `${d.substring(0, 4)}/${d.substring(4, 6)}/${d.substring(6, 8)}`;
+    return d;
+  };
+
+  const filteredKpiList = selectedUser === 'all' 
+    ? kpiList 
+    : kpiList.filter(k => k.userId === selectedUser);
+
+  return (
+    <div className="page-container" style={{ padding: '2rem' }}>
+      <div className="page-header" style={{ marginBottom: '2rem' }}>
+        <h1>KPI螻･豁ｴ繝ｻ謗ｨ遘ｻ (K-04)</h1>
+        <p>驕主悉縺ｮ譌･谺｡KPI繝・・繧ｿ縺ｨ蜈･蜉帙た繝ｼ繧ｹ縺ｮ遒ｺ隱・/p>
+      </div>
+
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Users size={18} style={{ color: 'var(--text-secondary)' }} />
+          <label style={{ fontWeight: 'bold' }}>繝｡繝ｳ繝舌・:</label>
+          <select 
+            value={selectedUser} 
+            onChange={e => setSelectedUser(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          >
+            {teamMembers.length > 1 && <option value="all">蜈ｨ蜩｡</option>}
+            {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+        
+        <button 
+          className="btn btn-primary" 
+          onClick={() => setIsExportModalOpen(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <Download size={18} /> CSV蜃ｺ蜉・
+        </button>
+      </div>
+
+      <div className="glass-panel" style={{ padding: '1.5rem' }}>
+        <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <History size={20} /> 逶ｴ霑代・KPI螻･豁ｴ
+        </h2>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem' }}>隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
+        ) : (
+          <div className="table-container">
+            <table className="reports-table">
+              <thead>
+                <tr>
+                  <th>譌･莉・/th>
+                  <th>繝｡繝ｳ繝舌・</th>
+                  <th>蜈･蜉帙た繝ｼ繧ｹ</th>
+                  <th>蟇ｾ雎｡蝠・攝</th>
+                  <th>譫ｶ髮ｻ謨ｰ</th>
+                  <th>譛牙柑騾夊ｩｱ</th>
+                  <th>蜀阪さ繝ｼ繝ｫ</th>
+                  <th>諡・ｽ楢・夊ｩｱ</th>
+                  <th>隕玖ｾｼ謨ｰ</th>
+                  <th>繧｢繝晄焚</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredKpiList.length === 0 ? (
+                  <tr><td colSpan="10" style={{ textAlign: 'center' }}>KPI螻･豁ｴ縺後≠繧翫∪縺帙ｓ</td></tr>
+                ) : (
+                  filteredKpiList.map((k, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 'bold' }}>
+                        <Link to={`/kpi/detail/${k.id}`} style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                          {formatDate(k.date)}
+                        </Link>
+                      </td>
+                      <td>{k.userName}</td>
+                      <td><SourceBadge source={k.source} /></td>
+                      <td>{products.find(p => p.productId === k.productId)?.productName || k.productId}</td>
+                      <td>{k.totals?.total || 0}</td>
+                      <td>{k.totals?.actual || 0}</td>
+                      <td>{k.totals?.recall || 0}</td>
+                      <td>{k.totals?.owner || 0}</td>
+                      <td>{k.totals?.prospect || 0}</td>
+                      <td>{k.totals?.appoint || 0}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <CsvExportModal 
+        isOpen={isExportModalOpen} 
+        onClose={() => setIsExportModalOpen(false)} 
+        usersData={teamMembers}
+      />
+    </div>
+  );
+}
