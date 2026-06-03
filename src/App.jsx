@@ -144,7 +144,7 @@ function AppRoutes() {
           <Route path="daily" element={<DailyDashboard />} />
           <Route path="daily/new" element={<DailyInput />} />
           <Route path="daily/history" element={<DailyHistory />} />
-          <Route path="daily/pending" element={<DailyPending />} />
+          {/* <Route path="daily/pending" element={<DailyPending />} /> */}
           <Route path="daily/:id" element={<DailyDetail />} />
 
           <Route path="progress" element={<ProgressDashboard />} />

@@ -24,6 +24,8 @@ export default function DailyInput() {
       await setDoc(doc(db, 'dailyReports', docId), {
         userId: user.uid,
         userName: user.displayName || '名無し',
+        teamId: user.teamId || '',
+        productId: user.currentProductId || 'all',
         date: date,
         content: content.trim(),
         status: 'submitted',

@@ -70,15 +70,15 @@ export default function DailyDetail() {
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>提出者: <strong style={{ color: 'var(--text-primary)' }}>{report.userName}</strong></p>
           </div>
           <div>
-            {report.status === 'reviewed' ? (
+            {false && (report.status === 'reviewed' ? (
               <span style={{ background: '#10b98120', color: '#10b981', padding: '0.5rem 1rem', borderRadius: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <CheckCircle size={18} /> 確認済
+                <CheckCircle size={18} /> 確認済み
               </span>
             ) : (
               <span style={{ background: '#f59e0b20', color: '#f59e0b', padding: '0.5rem 1rem', borderRadius: '20px', fontWeight: 'bold' }}>
                 確認待ち
               </span>
-            )}
+            ))}
           </div>
         </div>
 
@@ -86,7 +86,7 @@ export default function DailyDetail() {
           {report.content}
         </div>
 
-        {isManagerOrAbove && report.status !== 'reviewed' && (
+        {false && isManagerOrAbove && report.status !== 'reviewed' && (
           <div style={{ marginTop: '3rem', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '2rem' }}>
             <button onClick={handleReview} className="btn btn-primary" style={{ padding: '1rem 3rem', fontSize: '1.1rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
               <CheckCircle size={20} /> 内容を確認した（レビュー完了）

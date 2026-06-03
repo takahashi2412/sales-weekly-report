@@ -182,3 +182,72 @@ export async function exportKpiToCsv({
     });
   }
 }
+
+function escapeCsvField(field) {
+  if (field === null || field === undefined) return '';
+  const str = String(field);
+  if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+export async function exportDailyReportsCsv({
+  reports,
+  usersMap,
+  teamsMap,
+  productsMap,
+  startDate,
+  endDate,
+  scopeLabel,
+  user
+}) {
+  const header = ['日付', 'ユーザー名', '所属チーム', '担当商材', '日報テキスト', '提出日時'];
+  const rows = [header];
+
+  for (const r of reports) {
+    const row = [
+      escapeCsvField(r.date),
+      escapeCsvField(r.userName || usersMap[r.userId] || '不明'),
+      escapeCsvField(teamsMap[r.teamId] || r.teamId || '-'),
+      escapeCsvField(productsMap[r.productId] || productsMap[r.currentProductId] || r.productId || r.currentProductId || '-'),
+      escapeCsvField(r.content),
+      escapeCsvField(r.createdAt ? new Date(r.createdAt.toMillis ? r.createdAt.toMillis() : r.createdAt).toLocaleString() : '')
+    ];
+    rows.push(row);
+  }
+
+  const csvContent = rows.map(r => r.join(',')).join('\r\n');
+  const startStr = startDate.replace(/-/g, '');
+  const endStr = endDate.replace(/-/g, '');
+  const fileName = `日報_${scopeLabel}_${startStr}_${endStr}.csv`;
+  
+  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  await addDoc(collection(db, 'auditLogs'), {
+    action: 'csvExport',
+    executedBy: {
+      uid: user.uid,
+      email: user.email,
+      name: user.name || '',
+      role: user.role
+    },
+    target: {
+      type: 'csv',
+      id: `dailyReports_${scopeLabel}_${startDate}_${endDate}`,
+      name: fileName
+    },
+    metadata: {
+      period: `${startDate}〜${endDate}`,
+      scope: scopeLabel,
+      recordCount: reports.length
+    },
+    timestamp: serverTimestamp()
+  });
+}

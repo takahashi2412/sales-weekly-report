@@ -3,8 +3,9 @@ import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { History, FileText, CheckCircle, Clock } from 'lucide-react';
+import { History, FileText, CheckCircle, Clock, Download } from 'lucide-react';
 import { getVisibleUserIds } from '../../utils/teamUtils';
+import { exportDailyReportsCsv } from '../../utils/csvExport';
 import '../Dashboard.css';
 
 export default function DailyHistory() {
@@ -12,6 +13,17 @@ export default function DailyHistory() {
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState([]);
   const [filterType, setFilterType] = useState('me'); // 'me' | 'team' | 'all'
+  
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  
+  const [startDate, setStartDate] = useState(
+    `${firstDay.getFullYear()}-${String(firstDay.getMonth() + 1).padStart(2, '0')}-${String(firstDay.getDate()).padStart(2, '0')}`
+  );
+  const [endDate, setEndDate] = useState(
+    `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`
+  );
 
   useEffect(() => {
     const fetchReports = async () => {
@@ -22,12 +34,19 @@ export default function DailyHistory() {
           const visibleIds = await getVisibleUserIds(user);
           const promises = visibleIds.map(uid => getDocs(query(
             collection(db, 'dailyReports'),
-            where('userId', '==', uid)
+            where('userId', '==', uid),
+            where('date', '>=', startDate),
+            where('date', '<=', endDate)
           )));
           const snaps = await Promise.all(promises);
           snaps.forEach(snap => snap.forEach(d => list.push({ id: d.id, ...d.data() })));
         } else {
-          const q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
+          const q = query(
+            collection(db, 'dailyReports'), 
+            where('date', '>=', startDate),
+            where('date', '<=', endDate),
+            orderBy('date', 'desc')
+          );
           const snap = await getDocs(q);
           snap.forEach(d => list.push({ id: d.id, ...d.data() }));
         }
@@ -36,12 +55,12 @@ export default function DailyHistory() {
           list.sort((a, b) => b.date.localeCompare(a.date));
         }
         
-        // Very basic team filter logic (in real app, we should query by teamId)
         if (filterType === 'me' && user.role !== 'leader') {
+          list = list.filter(r => r.userId === user.uid);
+        } else if (filterType === 'me' && user.role === 'leader') {
           list = list.filter(r => r.userId === user.uid);
         }
         
-        // Very basic team filter logic (in real app, we should query by teamId)
         setReports(list);
       } catch (e) {
         console.error(e);
@@ -50,25 +69,82 @@ export default function DailyHistory() {
       }
     };
     fetchReports();
-  }, [user, filterType, isManagerOrAbove]);
+  }, [user, filterType, startDate, endDate, isManagerOrAbove]);
+
+  const handleExportCsv = async () => {
+    try {
+      const [teamsSnap, productsSnap, usersSnap] = await Promise.all([
+        getDocs(collection(db, 'teams')),
+        getDocs(collection(db, 'productMasters')),
+        getDocs(collection(db, 'users'))
+      ]);
+      const teamsMap = {};
+      teamsSnap.forEach(d => teamsMap[d.id] = d.data().name);
+      const productsMap = {};
+      productsSnap.forEach(d => productsMap[d.id] = d.data().name);
+      const usersMap = {};
+      usersSnap.forEach(d => usersMap[d.id] = d.data().name);
+      
+      const scopeLabel = filterType === 'me' ? '自分' : 'チーム';
+      
+      await exportDailyReportsCsv({
+        reports,
+        usersMap,
+        teamsMap,
+        productsMap,
+        startDate,
+        endDate,
+        scopeLabel,
+        user
+      });
+      alert('CSVを出力しました');
+    } catch (e) {
+      console.error(e);
+      alert('CSV出力中にエラーが発生しました');
+    }
+  };
 
   return (
     <div className="page-container" style={{ padding: '2rem' }}>
-      <div className="page-header" style={{ marginBottom: '2rem' }}>
-        <h1>日報履歴 (D-03)</h1>
-        <p>過去の日報提出履歴を確認します</p>
+      <div className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1>日報履歴 (D-03)</h1>
+          <p>過去の日報提出履歴を確認します</p>
+        </div>
+        <button onClick={handleExportCsv} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Download size={18} /> CSV 出力
+        </button>
       </div>
 
-      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+      <div className="filter-bar glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ fontWeight: 'bold' }}>表示対象: </div>
         <select 
           value={filterType} 
           onChange={e => setFilterType(e.target.value)}
-          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+          style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', marginRight: '1rem' }}
         >
           <option value="me">自分の日報</option>
           {isManagerOrAbove && <option value="all">チーム/全社の日報</option>}
         </select>
+        
+        <div style={{ fontWeight: 'bold' }}>期間: </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="input-field"
+            style={{ width: 'auto' }}
+          />
+          <span>〜</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="input-field"
+            style={{ width: 'auto' }}
+          />
+        </div>
       </div>
 
       <div className="glass-panel" style={{ padding: '1.5rem' }}>

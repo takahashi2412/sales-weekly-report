@@ -3,14 +3,17 @@ import { useAuth } from '../../context/AuthContext';
 import { db } from '../../firebase';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { FileEdit, ClipboardList, CheckCircle, Clock } from 'lucide-react';
-import { getVisibleUserIds } from '../../utils/teamUtils';
+import { FileEdit, ClipboardList, CheckCircle, Clock, XCircle, Users } from 'lucide-react';
+import { getVisibleUserIds, getVisibleUsers } from '../../utils/teamUtils';
 import '../Dashboard.css';
 
 export default function DailyDashboard() {
   const { user, isManagerOrAbove } = useAuth();
   const [loading, setLoading] = useState(true);
   const [reports, setReports] = useState([]);
+  const [unsubmittedUsers, setUnsubmittedUsers] = useState([]);
+  const [teamsMap, setTeamsMap] = useState({});
+  const [productsMap, setProductsMap] = useState({});
   
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -39,6 +42,42 @@ export default function DailyDashboard() {
         }
         
         setReports(list);
+
+        // Fetch unsubmitted users for today
+        const visibleUsers = await getVisibleUsers(user);
+        let submittedUserIds = new Set();
+        if (user.role === 'leader') {
+          const promises = visibleUsers.map(u => getDocs(query(
+            collection(db, 'dailyReports'),
+            where('userId', '==', u.id),
+            where('date', '==', todayStr)
+          )));
+          const snaps = await Promise.all(promises);
+          snaps.forEach(snap => {
+            if (!snap.empty) submittedUserIds.add(snap.docs[0].data().userId);
+          });
+        } else {
+          const q = query(collection(db, 'dailyReports'), where('date', '==', todayStr));
+          const snap = await getDocs(q);
+          snap.forEach(d => submittedUserIds.add(d.data().userId));
+        }
+
+        const unsubmitted = visibleUsers.filter(u => !submittedUserIds.has(u.id));
+        setUnsubmittedUsers(unsubmitted);
+
+        // Fetch teams and products for mapping
+        if (unsubmitted.length > 0) {
+          const teamsSnap = await getDocs(collection(db, 'teams'));
+          const tMap = {};
+          teamsSnap.forEach(d => tMap[d.id] = d.data().name);
+          setTeamsMap(tMap);
+
+          const productsSnap = await getDocs(collection(db, 'productMasters'));
+          const pMap = {};
+          productsSnap.forEach(d => pMap[d.id] = d.data().name);
+          setProductsMap(pMap);
+        }
+        
       } catch (e) {
         console.error(e);
       } finally {
@@ -89,11 +128,47 @@ export default function DailyDashboard() {
             <div className="stat-value" style={{ fontSize: '2rem', fontWeight: 'bold', marginTop: '1rem', color: pendingReviews.length > 0 ? '#f59e0b' : 'inherit' }}>
               {pendingReviews.length} <span style={{ fontSize: '1rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>件</span>
             </div>
-            {pendingReviews.length > 0 && (
+            {/* {pendingReviews.length > 0 && (
               <div style={{ marginTop: '1rem' }}>
                 <Link to="/daily/pending" className="btn btn-secondary btn-sm">確認待ち一覧へ</Link>
               </div>
-            )}
+            )} */}
+          </div>
+        )}
+      </div>
+
+      <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+          <Users size={20} /> 本日の日報未提出者一覧
+        </h2>
+        
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '1rem' }}>読み込み中...</div>
+        ) : unsubmittedUsers.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '1.5rem', color: '#10b981', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+            <CheckCircle size={32} />
+            <p style={{ fontWeight: 'bold' }}>本日の日報未提出者はいません</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="reports-table">
+              <thead>
+                <tr>
+                  <th>ユーザー名</th>
+                  <th>所属チーム</th>
+                  <th>担当商材</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unsubmittedUsers.map(u => (
+                  <tr key={u.id}>
+                    <td style={{ fontWeight: 'bold', color: '#ef4444' }}>{u.name}</td>
+                    <td>{teamsMap[u.teamId] || u.teamId || '-'}</td>
+                    <td>{productsMap[u.currentProductId] || u.currentProductId || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
