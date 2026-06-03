@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { collection, getDocs, query, where, orderBy, limit } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { FileEdit, ClipboardList, CheckCircle, Clock } from 'lucide-react';
+import { getVisibleUserIds } from '../../utils/teamUtils';
 import '../Dashboard.css';
 
 export default function DailyDashboard() {
@@ -17,15 +18,20 @@ export default function DailyDashboard() {
   useEffect(() => {
     const fetchRecent = async () => {
       try {
-        let q;
-        if (user.role === 'leader') {
-          q = query(collection(db, 'dailyReports'), where('userId', '==', user.uid));
-        } else {
-          q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
-        }
-        const snap = await getDocs(q);
         let list = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        if (user.role === 'leader') {
+          const visibleIds = await getVisibleUserIds(user);
+          const promises = visibleIds.map(uid => getDocs(query(
+            collection(db, 'dailyReports'),
+            where('userId', '==', uid)
+          )));
+          const snaps = await Promise.all(promises);
+          snaps.forEach(snap => snap.forEach(d => list.push({ id: d.id, ...d.data() })));
+        } else {
+          const q = query(collection(db, 'dailyReports'), orderBy('date', 'desc'), limit(50));
+          const snap = await getDocs(q);
+          snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+        }
         
         if (user.role === 'leader') {
           list.sort((a, b) => b.date.localeCompare(a.date));

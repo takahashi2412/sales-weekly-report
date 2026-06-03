@@ -25,7 +25,16 @@ export const getVisibleUserIds = async (user) => {
     return [...new Set(memberIds)];
   }
   
-  // leader → 自分のみ
+  // leader → 自分 + 自チームメンバー
+  if (user.role === 'leader') {
+    if (user.teamId) {
+      const q = query(collection(db, 'users'), where('teamId', '==', user.teamId));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => d.id);
+    }
+    return [user.uid];
+  }
+
   return [user.uid];
 };
 

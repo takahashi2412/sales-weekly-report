@@ -60,12 +60,12 @@ export default function KpiDashboard() {
       const allUserIds = allUsersSnap.docs.map(d => d.id);
       
       let visibleIds = [];
-      if (viewScope === 'company' && user.role === 'executive') {
+      if (viewScope === 'personal') {
+        visibleIds = [user.uid];
+      } else if (viewScope === 'company' && user.role === 'executive') {
         visibleIds = allUserIds;
       } else {
-        visibleIds = await getVisibleUserIds(
-          viewScope === 'personal' ? { ...user, role: 'leader' } : user
-        );
+        visibleIds = await getVisibleUserIds(user);
       }
 
       if (visibleIds.length === 0) {
@@ -77,10 +77,23 @@ export default function KpiDashboard() {
 
       // 1. Fetch KGI Targets for the target month (based on endDate)
       const targetMonthStr = `${eDateObj.getFullYear()}-${String(eDateObj.getMonth() + 1).padStart(2, '0')}`;
-      const targetsQ = query(collection(db, 'kpiTargets'), where('targetMonth', '==', targetMonthStr));
-      const tSnap = await getDocs(targetsQ);
+      let tDocs = [];
+      if (user.role === 'leader') {
+        const promises = visibleIds.map(uid => getDocs(query(
+          collection(db, 'kpiTargets'),
+          where('userId', '==', uid),
+          where('targetMonth', '==', targetMonthStr)
+        )));
+        const snaps = await Promise.all(promises);
+        snaps.forEach(snap => snap.forEach(d => tDocs.push(d)));
+      } else {
+        const targetsQ = query(collection(db, 'kpiTargets'), where('targetMonth', '==', targetMonthStr));
+        const tSnap = await getDocs(targetsQ);
+        tSnap.forEach(d => tDocs.push(d));
+      }
+      
       let kgiAgg = { order: 0, adopt: 0, visit: 0, grossProfit: 0 };
-      tSnap.forEach(d => {
+      tDocs.forEach(d => {
         const t = d.data();
         if ((t.status === 'approved' || t.status === 'pending') && visibleIds.includes(t.userId)) {
           if (selectedProduct === 'all' || t.productId === selectedProduct) {
@@ -94,21 +107,29 @@ export default function KpiDashboard() {
       setKgiTargets(kgiAgg);
 
       // 2. Fetch daily KPIs
-      let kpiQuery;
-      if (user.role === 'leader' && viewScope === 'personal') {
-        kpiQuery = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+      let kpiDocs = [];
+      if (user.role === 'leader') {
+        const promises = visibleIds.map(uid => getDocs(query(
+          collection(db, 'dailyKpi'),
+          where('userId', '==', uid),
+          where('date', '>=', startDate),
+          where('date', '<=', endDate)
+        )));
+        const snaps = await Promise.all(promises);
+        snaps.forEach(snap => snap.forEach(d => kpiDocs.push(d)));
       } else {
-        kpiQuery = query(
+        const kpiQuery = query(
           collection(db, 'dailyKpi'),
           where('date', '>=', startDate),
           where('date', '<=', endDate)
         );
+        const kpiSnap = await getDocs(kpiQuery);
+        kpiSnap.forEach(d => kpiDocs.push(d));
       }
-      const kpiSnap = await getDocs(kpiQuery);
       
       const aggregated = {};
       
-      kpiSnap.forEach(d => {
+      kpiDocs.forEach(d => {
         const data = d.data();
         
         if (user.role === 'leader' && viewScope === 'personal' && (data.date < startDate || data.date > endDate)) {
@@ -145,19 +166,27 @@ export default function KpiDashboard() {
       });
 
       // 3. Fetch orders for gross profit
-      let ordersQuery;
-      if (user.role === 'leader' && viewScope === 'personal') {
-        ordersQuery = query(collection(db, 'orders'), where('userId', '==', user.uid));
+      let ordersDocs = [];
+      if (user.role === 'leader') {
+        const promises = visibleIds.map(uid => getDocs(query(
+          collection(db, 'orders'),
+          where('userId', '==', uid),
+          where('orderDate', '>=', startDate),
+          where('orderDate', '<=', endDate)
+        )));
+        const snaps = await Promise.all(promises);
+        snaps.forEach(snap => snap.forEach(d => ordersDocs.push(d)));
       } else {
-        ordersQuery = query(
+        const ordersQuery = query(
           collection(db, 'orders'),
           where('orderDate', '>=', startDate),
           where('orderDate', '<=', endDate)
         );
+        const ordersSnap = await getDocs(ordersQuery);
+        ordersSnap.forEach(d => ordersDocs.push(d));
       }
-      const ordersSnap = await getDocs(ordersQuery);
       
-      ordersSnap.forEach(d => {
+      ordersDocs.forEach(d => {
         const data = d.data();
         if (user.role === 'leader' && viewScope === 'personal' && (data.orderDate < startDate || data.orderDate > endDate)) {
           return;

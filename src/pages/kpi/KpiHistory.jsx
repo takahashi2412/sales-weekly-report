@@ -58,9 +58,12 @@ export default function KpiHistory() {
       });
       setProducts(prodList);
 
-      const visibleUsers = await getVisibleUsers(
-        viewScope === 'personal' ? { ...user, role: 'leader' } : user
-      );
+      let visibleUsers = [];
+      if (viewScope === 'personal') {
+        visibleUsers = [{ id: user.uid, name: user.name || '自分' }];
+      } else {
+        visibleUsers = await getVisibleUsers(user);
+      }
       setTeamMembers(visibleUsers);
       
       const visibleIds = visibleUsers.map(u => u.id);
@@ -70,21 +73,26 @@ export default function KpiHistory() {
         return;
       }
 
-      let kpiQuery;
-      // ユーザーの指定要件に従いクエリを構築
+      let kpiDocs = [];
       if (user.role === 'leader') {
-        kpiQuery = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+        const promises = visibleIds.map(uid => getDocs(query(
+          collection(db, 'dailyKpi'),
+          where('userId', '==', uid)
+        )));
+        const snaps = await Promise.all(promises);
+        snaps.forEach(snap => snap.forEach(d => kpiDocs.push(d)));
       } else {
-        kpiQuery = query(collection(db, 'dailyKpi'), orderBy('date', 'desc'), limit(1500));
+        const kpiQuery = query(collection(db, 'dailyKpi'), orderBy('date', 'desc'), limit(1500));
+        const kpiSnap = await getDocs(kpiQuery);
+        kpiSnap.forEach(d => kpiDocs.push(d));
       }
       
-      const kpiSnap = await getDocs(kpiQuery);
       const kpis = [];
       
-      kpiSnap.forEach(d => {
+      kpiDocs.forEach(d => {
         const data = d.data();
         
-        // メモリ内で日付フィルタリング
+        // メモリ上で日付フィルタリング
         if (data.date >= startDate && data.date <= endDate) {
           if (visibleIds.includes(data.userId)) {
             const member = visibleUsers.find(u => u.id === data.userId);

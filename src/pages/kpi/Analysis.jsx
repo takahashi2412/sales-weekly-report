@@ -89,24 +89,32 @@ export default function Analysis() {
         const endStr = formatDateLocal(today);
         const startStr = formatDateLocal(pastDate);
 
-        let qRecent;
+        let snapRecentDocs = [];
         if (user.role === 'leader') {
-          qRecent = query(collection(db, 'dailyKpi'), where('userId', '==', user.uid));
+          const promises = teamMembers.map(m => getDocs(query(
+            collection(db, 'dailyKpi'),
+            where('userId', '==', m.id),
+            where('date', '>=', startStr),
+            where('date', '<=', endStr)
+          )));
+          const snaps = await Promise.all(promises);
+          snaps.forEach(snap => snap.forEach(d => snapRecentDocs.push(d)));
         } else {
-          qRecent = query(
+          const qRecent = query(
             collection(db, 'dailyKpi'),
             where('date', '>=', startStr),
             where('date', '<=', endStr)
           );
+          const snapRecent = await getDocs(qRecent);
+          snapRecent.forEach(d => snapRecentDocs.push(d));
         }
-        const snapRecent = await getDocs(qRecent);
         
         const aggRecent = {};
         teamMembers.forEach(m => {
           aggRecent[m.id] = { name: m.name, total: 0, actual: 0, prospect: 0, appoint: 0 };
         });
 
-        snapRecent.forEach(d => {
+        snapRecentDocs.forEach(d => {
           const data = d.data();
           if (user.role === 'leader') {
             if (data.productId !== selectedProduct) return;
@@ -130,17 +138,25 @@ export default function Analysis() {
         const startMonthStr = `${monthStr}-01`;
         const endMonthStr = `${monthStr}-31`;
         
-        let qMonth;
+        let snapMonthDocs = [];
         if (user.role === 'leader') {
-          qMonth = query(collection(db, 'orders'), where('userId', '==', user.uid));
+          const promises = teamMembers.map(m => getDocs(query(
+            collection(db, 'orders'),
+            where('userId', '==', m.id),
+            where('orderDate', '>=', startMonthStr),
+            where('orderDate', '<=', endMonthStr)
+          )));
+          const snaps = await Promise.all(promises);
+          snaps.forEach(snap => snap.forEach(d => snapMonthDocs.push(d)));
         } else {
-          qMonth = query(
+          const qMonth = query(
             collection(db, 'orders'),
             where('orderDate', '>=', startMonthStr),
             where('orderDate', '<=', endMonthStr)
           );
+          const snapMonth = await getDocs(qMonth);
+          snapMonth.forEach(d => snapMonthDocs.push(d));
         }
-        const snapMonth = await getDocs(qMonth);
 
         // Fetch KGI Targets
         const kgiMap = {};
@@ -173,13 +189,11 @@ export default function Analysis() {
           };
         });
 
-        snapMonth.forEach(d => {
+        snapMonthDocs.forEach(d => {
           const data = d.data();
-          if (user.role === 'leader') {
-            if (data.productId !== selectedProduct) return;
-            if (data.orderDate < startMonthStr || data.orderDate > endMonthStr) return;
-          } else {
-            if (data.productId !== selectedProduct) return;
+          if (data.productId !== selectedProduct) return;
+          if (user.role === 'leader' && (data.orderDate < startMonthStr || data.orderDate > endMonthStr)) {
+            return;
           }
           
           if (aggMonth[data.userId]) {
