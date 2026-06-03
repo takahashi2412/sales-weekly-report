@@ -162,13 +162,13 @@ export default function DailyHistory() {
                   <th>提出日</th>
                   <th>提出者</th>
                   <th>内容プレビュー</th>
-                  <th>ステータス</th>
+                  {/* <th>ステータス</th> */}
                   <th>アクション</th>
                 </tr>
               </thead>
               <tbody>
                 {reports.length === 0 ? (
-                  <tr><td colSpan="5" style={{ textAlign: 'center' }}>日報データがありません</td></tr>
+                  <tr><td colSpan="4" style={{ textAlign: 'center' }}>日報データがありません</td></tr>
                 ) : (
                   reports.map((r) => (
                     <tr key={r.id}>
@@ -177,13 +177,13 @@ export default function DailyHistory() {
                       <td style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {r.content}
                       </td>
-                      <td>
+                      {/* <td>
                         {r.status === 'reviewed' ? (
                           <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.2rem' }}><CheckCircle size={14}/> 確認済</span>
                         ) : (
                           <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Clock size={14}/> 確認待ち</span>
                         )}
-                      </td>
+                      </td> */}
                       <td>
                         <Link to={`/daily/${r.id}`} className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
                           <FileText size={14} style={{ marginRight: '0.2rem' }}/> 詳細を見る

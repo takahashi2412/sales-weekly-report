@@ -119,7 +119,7 @@ export default function DailyDashboard() {
           </div>
         </div>
 
-        {isManagerOrAbove && (
+        {false && isManagerOrAbove && (
           <div className="stat-card glass-panel" style={{ padding: '1.5rem', borderLeft: pendingReviews.length > 0 ? '4px solid #f59e0b' : '4px solid var(--border-color)' }}>
             <div className="stat-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Clock size={20} />
@@ -191,7 +191,7 @@ export default function DailyDashboard() {
                   <th>提出日</th>
                   <th>提出者</th>
                   <th>内容プレビュー</th>
-                  <th>ステータス</th>
+                  {/* <th>ステータス</th> */}
                 </tr>
               </thead>
               <tbody>
@@ -202,13 +202,13 @@ export default function DailyDashboard() {
                     <td style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       <Link to={`/daily/${r.id}`} style={{ color: 'var(--text-primary)', textDecoration: 'none' }}>{r.content}</Link>
                     </td>
-                    <td>
+                    {/* <td>
                       {r.status === 'reviewed' ? <span style={{ color: '#10b981' }}>確認済</span> : <span style={{ color: '#f59e0b' }}>確認待ち</span>}
-                    </td>
+                    </td> */}
                   </tr>
                 ))}
                 {reports.length === 0 && (
-                  <tr><td colSpan="4" style={{ textAlign: 'center' }}>日報データがありません</td></tr>
+                  <tr><td colSpan="3" style={{ textAlign: 'center' }}>日報データがありません</td></tr>
                 )}
               </tbody>
             </table>
