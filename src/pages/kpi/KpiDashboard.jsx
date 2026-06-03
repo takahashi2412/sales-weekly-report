@@ -219,7 +219,7 @@ export default function KpiDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [viewScope, user]);
+  }, [viewScope, user, startDate, endDate]);
 
   const handleFetchClick = () => {
     fetchData();
