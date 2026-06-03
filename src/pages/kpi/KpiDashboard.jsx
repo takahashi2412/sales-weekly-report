@@ -387,7 +387,7 @@ export default function KpiDashboard() {
           {activeTab === 'progress' && (
             <div className="animate-fade-in">
               <h2 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>KGI目標に対する進捗</h2>
-              <div className="dashboard-grid" style={{ marginBottom: '2rem' }}>
+              <div className="kgi-grid" style={{ marginBottom: '2rem' }}>
                 <div className="stat-card glass-panel" style={{ padding: '1.5rem', borderLeft: '4px solid #10b981' }}>
                   <div className="stat-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
