@@ -450,7 +450,7 @@ export default function KpiDashboard() {
               </div>
 
               <h2 style={{ marginBottom: '1.5rem', fontSize: '1.2rem', color: 'var(--text-secondary)', marginTop: '2rem' }}>KPIサマリー</h2>
-              <div className="dashboard-grid" style={{ marginBottom: '2rem' }}>
+              <div className="kpi-summary-grid" style={{ marginBottom: '2rem' }}>
                 <div className="stat-card glass-panel" style={{ padding: '1.5rem' }}>
                   <div className="stat-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-secondary)' }}>
                     <Target size={20} />

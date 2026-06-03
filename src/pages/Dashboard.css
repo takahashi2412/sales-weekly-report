@@ -25,9 +25,18 @@
   gap: 1.5rem;
 }
 
+.kpi-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
 @media (max-width: 768px) {
   .kgi-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  .kpi-summary-grid {
+    grid-template-columns: 1fr;
   }
 }
 
